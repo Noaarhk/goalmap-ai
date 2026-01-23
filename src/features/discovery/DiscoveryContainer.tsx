@@ -2,19 +2,19 @@ import { History, Swords } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { Edge, Node } from "reactflow";
 import ScoreGauge from "../../components/common/ScoreGauge";
-import {
-	extractBlueprintTactics,
-	generateBlueprintTips,
-	generateRoadmap,
-	getAssistantResponse,
-} from "../../services/gemini";
+import { apiClient } from "../../services/apiClient";
 import {
 	useAppStore,
 	useBlueprintStore,
 	useChatStore,
 	useRoadmapStore,
 } from "../../stores";
-import { AppState, type Message, type RoadmapNode } from "../../types";
+import {
+	AppState,
+	type Message,
+	type RoadmapData,
+	type RoadmapNode,
+} from "../../types";
 import BlueprintPreview from "./components/BlueprintPreview";
 import ChatPanel from "./components/ChatPanel";
 
@@ -66,62 +66,49 @@ export function DiscoveryContainer() {
 			content: text,
 			timestamp: Date.now(),
 		};
-		// Optimistic update
+
 		const newMessages = [...messages, userMsg];
 		setMessages(newMessages);
 		setIsChatLoading(true);
 		setIsBlueprintLoading(true);
 
 		try {
-			// 1. Unified Oracle Response (Message + Identity Update)
-			const extractionPayload = newMessages.map((m) => ({
-				role: m.role,
-				content: m.content,
-			}));
+			// Add placeholder for assistant response
+			addMessage("assistant", "");
 
-			getAssistantResponse(extractionPayload)
-				.then((res) => {
-					// Atomically update Chat AND Blueprint (Identity)
-					addMessage("assistant", res.message);
-					if (res.statusSummary && Object.keys(res.statusSummary).length > 0) {
-						updateBlueprint(res.statusSummary);
+			await apiClient.streamChat(
+				text,
+				newMessages.map((m) => ({ role: m.role, content: m.content })),
+				blueprint,
+				(event) => {
+					if (event.type === "token") {
+						// Update the last message (streaming text)
+						useChatStore.setState((state) => {
+							const msgs = [...state.messages];
+							const lastMsg = msgs[msgs.length - 1];
+							if (lastMsg && lastMsg.role === "assistant") {
+								lastMsg.content += event.data.text;
+							}
+							return { messages: msgs };
+						});
+					} else if (event.type === "status") {
+						// Optional: Show status (e.g. "Analyzing...")
+						// For now, we just log or could add a status indicator in UI
+						console.log("Status:", event.data.message);
+					} else if (event.type === "blueprint_update") {
+						// Update blueprint real-time
+						updateBlueprint(event.data);
+						setIsBlueprintLoading(false); // Stop loading spinner if we get data
+					} else if (event.type === "error") {
+						console.error("Stream error:", event.data);
+						addMessage("assistant", `\n[System Error: ${event.data.message}]`);
 					}
-				})
-				.catch((err) => {
-					console.error("Oracle Response failed:", err);
-					addMessage(
-						"assistant",
-						"The Oracle's connection is weak. I am having trouble responding right now.",
-					);
-				})
-				.finally(() => setIsChatLoading(false));
-
-			// 2. Tactical & Strategic Background Analysis
-			extractBlueprintTactics(extractionPayload)
-				.then(async (tacticsRes) => {
-					if (tacticsRes && Object.keys(tacticsRes).length > 0) {
-						updateBlueprint(tacticsRes);
-
-						// 3. Tip Generation (Deepest stage)
-						try {
-							const currentBlueprint = useBlueprintStore.getState().blueprint;
-							const tips = await generateBlueprintTips(
-								{ ...currentBlueprint, ...tacticsRes },
-								extractionPayload,
-							);
-							updateBlueprint(tips);
-						} catch (tipErr) {
-							console.error("Tips failed:", tipErr);
-						}
-					}
-				})
-				.catch((err) => console.error("Tactics failed:", err))
-				.finally(() => {
-					console.log("Setting isBlueprintLoading to false");
-					setIsBlueprintLoading(false);
-				});
+				},
+			);
 		} catch (error) {
 			console.error("Critical initiation error:", error);
+			addMessage("assistant", "Connection to QuestForge Server failed.");
+		} finally {
 			setIsChatLoading(false);
 			setIsBlueprintLoading(false);
 		}
@@ -129,101 +116,78 @@ export function DiscoveryContainer() {
 
 	const handleGenerate = async () => {
 		setAppState(AppState.TRANSITION);
+
+		// Local accumulator for the streaming session
+		const currentRoadmap: RoadmapData = {
+			id: `rm-${Date.now()}`,
+			createdAt: Date.now(),
+			title: blueprint.goal || "New Roadmap",
+			score: 0,
+			summary: "Generating...",
+			nodes: [],
+			edges: [],
+		};
+
+		const updateView = () => {
+			// Update store and trigger visualization refresh
+			setRoadmap({ ...currentRoadmap }); // Spread to create new reference
+			regenerateFlow({ ...currentRoadmap });
+		};
+
 		try {
-			const history = messages.map((m) => `${m.role}: ${m.content}`).join("\n");
-			const roadmapData = await generateRoadmap(blueprint, history);
-			setRoadmap(roadmapData);
+			await apiClient.streamRoadmap(blueprint, (event) => {
+				if (event.type === "roadmap_milestones") {
+					// 1. Skeleton: Milestones and their sequence
+					const milestones = event.data.milestones;
+					const newNodes = milestones.map((m: any) => ({
+						id: m.id,
+						type: "milestone",
+						label: m.label,
+						is_assumed: m.is_assumed,
+						details: m.details ? [m.details] : [],
+						data: { ...m }, // Ensure data prop is robust
+					}));
 
-			const flowNodes: Node[] = [];
-			const adjacency = new Map<string, string[]>();
-			roadmapData.edges.forEach((e) => {
-				if (!adjacency.has(e.source)) adjacency.set(e.source, []);
-				adjacency.get(e.source)?.push(e.target);
-			});
-
-			let currentY = 0;
-			const milestones = roadmapData.nodes.filter(
-				(n) => n.type === "milestone",
-			);
-
-			milestones.forEach((milestone) => {
-				// Place Milestone
-				flowNodes.push({
-					id: milestone.id,
-					type: "roadmapNode",
-					data: {
-						label: milestone.label,
-						is_assumed: milestone.is_assumed,
-						type: milestone.type,
-						details: milestone.details,
-					},
-					position: { x: 0, y: currentY },
-				});
-
-				// Process connected Steps
-				const stepIds = adjacency.get(milestone.id) || [];
-				const steps = stepIds
-					.map((id) => roadmapData.nodes.find((n) => n.id === id))
-					.filter((n) => n) as RoadmapNode[];
-
-				let stepYStart = currentY;
-
-				steps.forEach((step, _stepIndex) => {
-					// Process connected Tasks (Action Items)
-					const taskIds = adjacency.get(step.id) || [];
-					const tasks = taskIds
-						.map((id) => roadmapData.nodes.find((n) => n.id === id))
-						.filter((n) => n) as RoadmapNode[];
-
-					// Calculate height required for this step
-					const requiredHeight = Math.max(tasks.length * 100, 150);
-
-					// Place Step
-					flowNodes.push({
-						id: step.id,
-						type: "roadmapNode",
-						data: {
-							label: step.label,
-							is_assumed: step.is_assumed,
-							type: step.type,
-							details: step.details,
-						},
-						position: { x: 400, y: stepYStart + requiredHeight / 2 - 50 },
-					});
-
-					// Place Tasks
-					tasks.forEach((task, taskIndex) => {
-						flowNodes.push({
-							id: task.id,
-							type: "roadmapNode",
-							data: {
-								label: task.label,
-								is_assumed: task.is_assumed,
-								type: task.type,
-								details: task.details,
-							},
-							position: { x: 800, y: stepYStart + taskIndex * 100 },
+					// Create sequential edges between milestones
+					const newEdges = [];
+					for (let i = 0; i < newNodes.length - 1; i++) {
+						newEdges.push({
+							id: `e-${newNodes[i].id}-${newNodes[i + 1].id}`,
+							source: newNodes[i].id,
+							target: newNodes[i + 1].id,
 						});
-					});
+					}
 
-					stepYStart += requiredHeight + 50;
-				});
+					currentRoadmap.nodes = newNodes;
+					currentRoadmap.edges = newEdges;
+					updateView();
+				} else if (event.type === "roadmap_tasks") {
+					// 2. Expansion: Add tasks to a milestone
+					const milestoneId = event.data.milestone_id;
+					const tasks = event.data.tasks;
 
-				currentY = Math.max(currentY + 200, stepYStart + 100);
+					const taskNodes = tasks.map((t: any) => ({
+						id: t.id,
+						type: "task", // These will act as "Steps" in the visualization (2nd column)
+						label: t.label,
+						status: t.status,
+						details: t.details ? [t.details] : [],
+						data: { ...t },
+					}));
+
+					const taskEdges = taskNodes.map((t: any) => ({
+						id: `e-${milestoneId}-${t.id}`,
+						source: milestoneId,
+						target: t.id,
+					}));
+
+					currentRoadmap.nodes.push(...taskNodes);
+					currentRoadmap.edges.push(...taskEdges);
+					updateView();
+				} else if (event.type === "error") {
+					console.error("Roadmap stream error:", event.data);
+				}
 			});
-
-			// Add edges
-			const flowEdges: Edge[] = roadmapData.edges.map((e) => ({
-				id: e.id,
-				source: e.source,
-				target: e.target,
-				animated: true,
-				style: { stroke: "#3d84f5", strokeWidth: 2 },
-			}));
-
-			setFlowNodes(flowNodes);
-			setFlowEdges(flowEdges);
-			setAppState(AppState.VISUALIZATION);
 		} catch (e) {
 			console.error(e);
 			alert("The Oracle's vision is clouded. Please try again.");
