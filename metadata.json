@@ -1,0 +1,7 @@
+{
+  "name": "GoalMap AI",
+  "description": "An AI-powered goal structuring and roadmap visualization tool that turns abstract ideas into actionable visual plans through interactive dialogue.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
