@@ -1,4 +1,4 @@
-from app.api.endpoints import router as api_router
+from app.api.routes import conversations, discovery, roadmaps
 from app.core.config import settings
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -24,7 +24,21 @@ app.add_middleware(
 )
 
 
-app.include_router(api_router, prefix=settings.API_V1_STR)
+app.include_router(
+    discovery.router,
+    prefix=settings.API_V1_STR,
+    tags=["discovery"],
+)
+app.include_router(
+    conversations.router,
+    prefix=f"{settings.API_V1_STR}/conversations",
+    tags=["conversations"],
+)
+app.include_router(
+    roadmaps.router,
+    prefix=f"{settings.API_V1_STR}/roadmaps",
+    tags=["roadmaps"],
+)
 
 if __name__ == "__main__":
     import uvicorn

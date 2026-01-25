@@ -1,4 +1,5 @@
 import type { BlueprintData } from "../types";
+import { supabase } from "./supabase";
 
 export interface ChatResponseEvent {
 	type: "token" | "status" | "blueprint_update" | "error";
@@ -14,17 +15,55 @@ const API_BASE = "http://localhost:8000/api";
 
 type EventHandler<T> = (event: T) => void;
 
+async function getAuthHeaders(): Promise<Record<string, string>> {
+	const {
+		data: { session },
+	} = await supabase.auth.getSession();
+	console.log("[Auth] Session:", session ? `Token exists (expires: ${new Date(session.expires_at! * 1000).toISOString()})` : "No session");
+	const headers: Record<string, string> = {
+		"Content-Type": "application/json",
+	};
+	if (session?.access_token) {
+		headers.Authorization = `Bearer ${session.access_token}`;
+	}
+	return headers;
+}
+
+async function fetchJSON<T>(url: string, options: RequestInit = {}): Promise<T> {
+	console.log(`[API Request] ${options.method || "GET"} ${url}`, options.body ? JSON.parse(options.body as string) : "");
+	const headers = await getAuthHeaders();
+	const response = await fetch(url, {
+		...options,
+		headers: {
+			...headers,
+			...options.headers,
+		},
+	});
+
+	if (!response.ok) {
+        console.error(`[API Error] ${response.status} ${response.statusText} for ${url}`);
+		throw new Error(`HTTP error! status: ${response.status}`);
+	}
+    
+    // Handle 204 No Content
+    if (response.status === 204) {
+        return null as T;
+    }
+
+	return response.json();
+}
+
 async function streamRequest<T>(
 	url: string,
 	body: any,
 	onEvent: EventHandler<T>,
 ) {
 	try {
+        console.log(`[API Stream Request] POST ${url}`, body);
+		const headers = await getAuthHeaders();
 		const response = await fetch(url, {
 			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
+			headers,
 			body: JSON.stringify(body),
 		});
 
@@ -78,11 +117,17 @@ export const apiClient = {
 		message: string,
 		history: { role: string; content: string }[],
 		currentBlueprint: Partial<BlueprintData>,
+		chatId: string,
 		onEvent: EventHandler<ChatResponseEvent>,
 	) => {
 		await streamRequest(
-			`${API_BASE}/chat/stream`,
-			{ message, history, current_blueprint: currentBlueprint }, // Note: snake_case for backend
+			`${API_BASE}/v1/chat/stream`,
+			{
+				message,
+				history,
+				current_blueprint: currentBlueprint,
+				chat_id: chatId,
+			},
 			onEvent,
 		);
 	},
@@ -92,7 +137,7 @@ export const apiClient = {
 		onEvent: EventHandler<RoadmapResponseEvent>,
 	) => {
 		await streamRequest(
-			`${API_BASE}/roadmap/stream`,
+			`${API_BASE}/v1/roadmap/stream`,
 			{
 				goal: blueprint.goal,
 				why: blueprint.why,
@@ -103,4 +148,39 @@ export const apiClient = {
 			onEvent,
 		);
 	},
+    
+    // --- REST API Methods ---
+
+    // Conversations
+    getConversations: async () => {
+        return fetchJSON<any[]>(`${API_BASE}/v1/conversations/`);
+    },
+
+    createConversation: async (title?: string) => {
+        return fetchJSON<any>(`${API_BASE}/v1/conversations/`, {
+            method: "POST",
+            body: JSON.stringify({ title }),
+        });
+    },
+
+    getConversation: async (id: string) => {
+        return fetchJSON<any>(`${API_BASE}/v1/conversations/${id}/`);
+    },
+    
+    deleteConversation: async (id: string) => {
+        return fetchJSON<void>(`${API_BASE}/v1/conversations/${id}/`, {
+            method: "DELETE",
+        });
+    },
+
+    // Roadmaps
+    getRoadmaps: async () => {
+        return fetchJSON<any[]>(`${API_BASE}/v1/roadmaps/`);
+    },
+
+    deleteRoadmap: async (id: string) => {
+        return fetchJSON<void>(`${API_BASE}/v1/roadmaps/${id}/`, {
+            method: "DELETE",
+        });
+    },
 };

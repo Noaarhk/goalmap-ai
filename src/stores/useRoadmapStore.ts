@@ -27,6 +27,11 @@ interface RoadmapStore {
     onNodesChange: OnNodesChange;
     onEdgesChange: OnEdgesChange;
     setSelectedNodeId: (id: string | null) => void;
+    
+    // API Actions
+    setHistory: (history: RoadmapData[]) => void;
+    removeFromHistory: (id: string) => void;
+    reset: () => void;
 }
 
 export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
@@ -75,4 +80,10 @@ export const useRoadmapStore = create<RoadmapStore>((set, get) => ({
     },
 
     setSelectedNodeId: (selectedNodeId) => set({ selectedNodeId }),
+
+    setHistory: (history) => set({ history }),
+    removeFromHistory: (id) => set((state) => ({
+        history: state.history.filter((r) => r.id !== id)
+    })),
+    reset: () => set({ roadmap: null, history: [], nodes: [], edges: [], selectedNodeId: null }),
 }));

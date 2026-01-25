@@ -1,5 +1,3 @@
-from typing import List, Optional
-
 from pydantic import BaseModel, Field
 
 # --- Domain Models ---
@@ -10,22 +8,22 @@ class Task(BaseModel):
     label: str
     type: str = "task"  # "task", "milestone"
     status: str = "pending"
-    details: Optional[str] = None
+    details: str | None = None
 
 
 class Milestone(BaseModel):
     id: str
     label: str
     type: str = "milestone"
-    tasks: List[Task] = Field(default_factory=list)
+    tasks: list[Task] = Field(default_factory=list)
     order: int
     is_assumed: bool = False
-    details: Optional[str] = None
+    details: str | None = None
 
 
 class Roadmap(BaseModel):
     title: str
-    milestones: List[Milestone] = Field(default_factory=list)
+    milestones: list[Milestone] = Field(default_factory=list)
 
 
 # --- SSE Event Models ---
@@ -34,14 +32,14 @@ class Roadmap(BaseModel):
 class RoadmapMilestonesEvent(BaseModel):
     """Event sent when milestones (skeleton) are planned"""
 
-    milestones: List[Milestone]
+    milestones: list[Milestone]
 
 
 class RoadmapTasksEvent(BaseModel):
     """Event sent when tasks for a specific milestone are generated"""
 
     milestone_id: str
-    tasks: List[Task]
+    tasks: list[Task]
 
 
 # --- API Request Models ---
@@ -50,6 +48,6 @@ class RoadmapTasksEvent(BaseModel):
 class GenerateRoadmapRequest(BaseModel):
     goal: str
     why: str
-    timeline: str
-    obstacles: Optional[str] = None
-    resources: Optional[str] = None
+    timeline: str | None = None
+    obstacles: str | None = None
+    resources: str | None = None

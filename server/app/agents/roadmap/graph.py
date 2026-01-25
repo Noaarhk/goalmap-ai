@@ -13,5 +13,11 @@ graph_builder.add_edge(START, "plan_milestones")
 graph_builder.add_edge("plan_milestones", "generate_tasks")
 graph_builder.add_edge("generate_tasks", END)
 
+
 # Compile
-roadmap_graph = graph_builder.compile()
+# Compile
+def get_graph(checkpointer=None):
+    return graph_builder.compile(checkpointer=checkpointer)
+
+
+roadmap_graph = get_graph()

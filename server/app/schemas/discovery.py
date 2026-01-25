@@ -1,5 +1,3 @@
-from typing import Dict, List, Optional
-
 from pydantic import BaseModel, Field
 
 # --- Domain Models ---
@@ -11,17 +9,19 @@ class FieldScores(BaseModel):
     timeline: int = 0
     obstacles: int = 0
     resources: int = 0
+    milestones: int = 0
 
 
 class BlueprintData(BaseModel):
-    goal: Optional[str] = None
-    why: Optional[str] = None
-    timeline: Optional[str] = None
-    obstacles: Optional[str] = None
-    resources: Optional[str] = None
+    goal: str | None = None
+    why: str | None = None
+    timeline: str | None = None
+    obstacles: str | None = None
+    resources: str | None = None
+    milestones: list[str] = Field(default_factory=list)
     fieldScores: FieldScores = Field(default_factory=FieldScores)
-    readinessTips: List[str] = Field(default_factory=list)
-    successTips: List[str] = Field(default_factory=list)
+    readinessTips: list[str] = Field(default_factory=list)
+    successTips: list[str] = Field(default_factory=list)
 
 
 # --- SSE Event Models ---
@@ -29,7 +29,7 @@ class BlueprintData(BaseModel):
 
 class TokenEventData(BaseModel):
     text: str
-    run_id: Optional[str] = None
+    run_id: str | None = None
 
 
 class StatusEventData(BaseModel):
@@ -40,14 +40,15 @@ class StatusEventData(BaseModel):
 class BlueprintUpdateEventData(BaseModel):
     """Partial update for the blueprint"""
 
-    goal: Optional[str] = None
-    why: Optional[str] = None
-    timeline: Optional[str] = None
-    obstacles: Optional[str] = None
-    resources: Optional[str] = None
-    fieldScores: Optional[Dict[str, int]] = None
-    readinessTips: Optional[List[str]] = None
-    successTips: Optional[List[str]] = None
+    goal: str | None = None
+    why: str | None = None
+    timeline: str | None = None
+    obstacles: str | None = None
+    resources: str | None = None
+    milestones: list[str] | None = None
+    fieldScores: dict[str, int] | None = None
+    readinessTips: list[str] | None = None
+    successTips: list[str] | None = None
 
 
 class ErrorEventData(BaseModel):
@@ -59,6 +60,7 @@ class ErrorEventData(BaseModel):
 
 
 class ChatRequest(BaseModel):
+    chat_id: str | None = None
     message: str
-    history: List[Dict[str, str]] = []  # [{"role": "user", "content": "..."}]
-    current_blueprint: Optional[BlueprintData] = None
+    history: list[dict[str, str]] = []  # [{"role": "user", "content": "..."}]
+    current_blueprint: BlueprintData | None = None

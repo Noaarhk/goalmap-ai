@@ -1,15 +1,19 @@
-from typing import Any, Dict
+from typing import Any
 
+from app.agents.roadmap.prompts import (
+    STRATEGIC_PLANNER_PROMPT,
+    TACTICAL_TASK_MANAGER_PROMPT,
+)
 from app.agents.roadmap.state import RoadmapState
 from app.schemas.roadmap import Milestone, Task
-from app.services.gemini import get_llm
+from app.services.gemini import get_llm, parse_gemini_output
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-llm = get_llm()
+llm = get_llm(model="gemini-3-pro-preview")
 
 
-async def plan_milestones(state: RoadmapState) -> Dict[str, Any]:
+async def plan_milestones(state: RoadmapState) -> dict[str, Any]:
     """
     Generates the high-level milestones (skeleton) for the goal.
     """
@@ -20,25 +24,13 @@ async def plan_milestones(state: RoadmapState) -> Dict[str, Any]:
         [
             (
                 "system",
-                """You are a Strategic Planner.
-        Break down the goal into 3-5 major sequential milestones.
-        
-        Goal: {goal}
-        Context: {context}
-        
-        Return JSON list of milestones:
-        {{
-            "milestones": [
-                {{ "id": "m1", "label": "Milestone Title", "is_assumed": false, "order": 1, "details": "Brief description" }}
-            ]
-        }}
-        """,
+                STRATEGIC_PLANNER_PROMPT,
             ),
             ("human", "Plan the milestones."),
         ]
     )
 
-    chain = prompt | llm | JsonOutputParser()
+    chain = prompt | llm | parse_gemini_output | JsonOutputParser()
     try:
         result = await chain.ainvoke({"goal": goal, "context": str(context)})
         milestones_data = result.get("milestones", [])
@@ -54,7 +46,7 @@ async def plan_milestones(state: RoadmapState) -> Dict[str, Any]:
         return {"milestones": []}
 
 
-async def expand_milestone_tasks(state: RoadmapState) -> Dict[str, Any]:
+async def expand_milestone_tasks(state: RoadmapState) -> dict[str, Any]:
     """
     NOTE: In LangGraph, to run parallel map-reduce style expansion,
     we often handle this orchestration in the graph definition using `Send` API.
@@ -72,7 +64,7 @@ async def expand_milestone_tasks(state: RoadmapState) -> Dict[str, Any]:
 
 
 # Alternative: Single node generating tasks for all milestones (easier for v1)
-async def generate_tasks_for_all(state: RoadmapState) -> Dict[str, Any]:
+async def generate_tasks_for_all(state: RoadmapState) -> dict[str, Any]:
     milestones = state["milestones"]
     goal = state["goal"]
 
@@ -86,25 +78,13 @@ async def generate_tasks_for_all(state: RoadmapState) -> Dict[str, Any]:
         [
             (
                 "system",
-                """You are a Tactical Task Manager.
-        Generate 3-5 specific execution tasks for the given milestone.
-        
-        Goal: {goal}
-        Milestone: {milestone_label} ({milestone_details})
-        
-        Return JSON list of tasks:
-        {{
-            "tasks": [
-                {{ "id": "t1", "label": "Action Item", "type": "task", "status": "pending", "details": "..." }}
-            ]
-        }}
-        """,
+                TACTICAL_TASK_MANAGER_PROMPT,
             ),
             ("human", "Generate tasks."),
         ]
     )
 
-    chain = prompt | llm | JsonOutputParser()
+    chain = prompt | llm | parse_gemini_output | JsonOutputParser()
 
     for ms in milestones:
         try:

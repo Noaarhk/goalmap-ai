@@ -1,4 +1,11 @@
-import { Compass, Package, Scroll, ShieldAlert, Sword } from "lucide-react";
+import {
+	Compass,
+	Flag,
+	Package,
+	Scroll,
+	ShieldAlert,
+	Sword,
+} from "lucide-react";
 import type React from "react";
 import { useBlueprintStore } from "../../../stores";
 
@@ -21,6 +28,17 @@ const BlueprintPreview: React.FC = () => {
 			value: data.why,
 			score: data.fieldScores?.why || 0,
 			color: "text-purple-500",
+		},
+		{
+			key: "milestones",
+			label: "Strategic Checkpoints",
+			icon: <Flag className="w-4 h-4" />,
+			value:
+				data.milestones && data.milestones.length > 0
+					? data.milestones.join(", ")
+					: undefined,
+			score: data.fieldScores?.milestones || 0,
+			color: "text-sky-400",
 		},
 		{
 			key: "timeline",

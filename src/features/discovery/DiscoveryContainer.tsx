@@ -1,10 +1,11 @@
-import { History, Swords } from "lucide-react";
-import { useMemo, useState } from "react";
+import { History, LogOut, Swords } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import type { Edge, Node } from "reactflow";
 import ScoreGauge from "../../components/common/ScoreGauge";
 import { apiClient } from "../../services/apiClient";
 import {
 	useAppStore,
+	useAuthStore,
 	useBlueprintStore,
 	useChatStore,
 	useRoadmapStore,
@@ -39,20 +40,82 @@ export function DiscoveryContainer() {
 
 	const [showHistory, setShowHistory] = useState(false);
 
+	// Get auth state
+	const { isInitialized, user } = useAuthStore();
+
+	// --- Data Loading ---
+	useEffect(() => {
+		// Wait for auth to be initialized and user to be logged in
+		if (!isInitialized || !user) {
+			console.log("[DiscoveryContainer] Waiting for auth...", {
+				isInitialized,
+				user: !!user,
+			});
+			return;
+		}
+
+		const loadData = async () => {
+			console.log("[DiscoveryContainer] Loading data...");
+			try {
+				// 1. Load Roadmaps
+				const roadmaps = await apiClient.getRoadmaps();
+				console.log("[DiscoveryContainer] Loaded roadmaps:", roadmaps);
+				const historyData = roadmaps.map((r: any) => ({
+					id: r.id,
+					title: r.title,
+					// Convert snake_case to camelCase and datetime to timestamp
+					createdAt: new Date(r.created_at).getTime(),
+					score: 0, // Not stored in backend yet
+					summary: r.goal || "",
+					nodes: [], // Will be regenerated when loading
+					edges: [],
+				}));
+				console.log("[DiscoveryContainer] Transformed history:", historyData);
+				useRoadmapStore.getState().setHistory(historyData);
+
+				// 2. Load Conversations
+				const conversations = await apiClient.getConversations();
+				if (conversations.length > 0) {
+					// Load the most recent one
+					const latest = conversations[0];
+					useChatStore
+						.getState()
+						.loadConversation(latest.id, latest.messages || []);
+					useBlueprintStore.getState().setBlueprint(latest.blueprint || {});
+				} else {
+					// Create a new one
+					const newConv = await apiClient.createConversation("New Quest");
+					useChatStore.getState().loadConversation(newConv.id, []);
+				}
+			} catch (e) {
+				console.error("Failed to load initial data", e);
+			}
+		};
+		loadData();
+	}, [isInitialized, user]);
+
 	const infoScore = useMemo(() => {
 		if (!blueprint.fieldScores) {
-			const fields = ["goal", "why", "timeline", "obstacles", "resources"];
-			const filledCount = fields.filter(
-				(f) => !!(blueprint as Record<string, any>)[f],
-			).length;
-			return Math.min(filledCount * 4, 20);
+			const fields = [
+				"goal",
+				"why",
+				"milestones",
+				"timeline",
+				"obstacles",
+				"resources",
+			];
+			const filledCount = fields.filter((f) => {
+				const val = (blueprint as Record<string, any>)[f];
+				return Array.isArray(val) ? val.length > 0 : !!val;
+			}).length;
+			return Math.min(filledCount * 3.3, 20);
 		}
 		const scores = Object.values(blueprint.fieldScores) as number[];
 		const totalDetail = scores.reduce(
 			(acc: number, val: number) => acc + val,
 			0,
 		);
-		return Math.round(totalDetail / 5);
+		return Math.round(totalDetail / 6);
 	}, [blueprint]);
 
 	const canGenerate = useMemo(() => {
@@ -60,6 +123,13 @@ export function DiscoveryContainer() {
 	}, [messages.length, infoScore]);
 
 	const handleSendMessage = async (text: string) => {
+		const { currentConversationId } = useChatStore.getState();
+
+		if (!currentConversationId) {
+			console.error("No active conversation. Cannot send message.");
+			return;
+		}
+
 		const userMsg: Message = {
 			id: Date.now().toString(),
 			role: "user",
@@ -80,9 +150,11 @@ export function DiscoveryContainer() {
 				text,
 				newMessages.map((m) => ({ role: m.role, content: m.content })),
 				blueprint,
+				currentConversationId,
 				(event) => {
 					if (event.type === "token") {
 						// Update the last message (streaming text)
+						setIsChatLoading(true); // Switch back to simple loading state
 						useChatStore.setState((state) => {
 							const msgs = [...state.messages];
 							const lastMsg = msgs[msgs.length - 1];
@@ -92,9 +164,16 @@ export function DiscoveryContainer() {
 							return { messages: msgs };
 						});
 					} else if (event.type === "status") {
-						// Optional: Show status (e.g. "Analyzing...")
-						// For now, we just log or could add a status indicator in UI
-						console.log("Status:", event.data.message);
+						// Show specific status (e.g. "Analyzing Goal...")
+						const statusMap: Record<string, string> = {
+							analyze_input: "Analyzing your quest...",
+							extract_goal: "Forging the heart of your mission...",
+							extract_tactics: "Mapping out the strategy...",
+							generate_response: "The Oracle is speaking...",
+							analyze_turn: "Consulting the archives...",
+							generate_chat: "Crafting response...",
+						};
+						setIsChatLoading(statusMap[event.data.node] || event.data.message);
 					} else if (event.type === "blueprint_update") {
 						// Update blueprint real-time
 						updateBlueprint(event.data);
@@ -132,6 +211,13 @@ export function DiscoveryContainer() {
 			// Update store and trigger visualization refresh
 			setRoadmap({ ...currentRoadmap }); // Spread to create new reference
 			regenerateFlow({ ...currentRoadmap });
+
+			// Persist the roadmap via API (already done in stream, but we might want to refresh list)
+			setTimeout(() => {
+				apiClient.getRoadmaps().then((roadmaps) => {
+					useRoadmapStore.getState().setHistory(roadmaps);
+				});
+			}, 1000);
 		};
 
 		try {
@@ -308,45 +394,56 @@ export function DiscoveryContainer() {
 						</div>
 					</div>
 
-					{roadmapHistory.length > 0 && (
-						<div className="relative">
-							<button
-								type="button"
-								onClick={() => setShowHistory(!showHistory)}
-								className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"
-								title="Quest History"
-							>
-								<History className="w-5 h-5" />
-							</button>
+					<div className="flex items-center gap-2">
+						{roadmapHistory.length > 0 && (
+							<div className="relative">
+								<button
+									type="button"
+									onClick={() => setShowHistory(!showHistory)}
+									className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"
+									title="Quest History"
+								>
+									<History className="w-5 h-5" />
+								</button>
 
-							{showHistory && (
-								<div className="absolute right-0 top-full mt-2 w-64 bg-[#1a2436] border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden">
-									<div className="p-3 border-b border-slate-700 bg-[#101722]/50">
-										<h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-											Quest History
-										</h3>
+								{showHistory && (
+									<div className="absolute right-0 top-full mt-2 w-64 bg-[#1a2436] border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+										<div className="p-3 border-b border-slate-700 bg-[#101722]/50">
+											<h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+												Quest History
+											</h3>
+										</div>
+										<div className="max-h-64 overflow-y-auto">
+											{roadmapHistory.map((r) => (
+												<button
+													key={r.id}
+													type="button"
+													onClick={() => handleLoadRoadmap(r.id)}
+													className="w-full text-left p-3 hover:bg-slate-800 border-b border-slate-800/50 last:border-0 transition-colors group"
+												>
+													<p className="text-sm font-bold text-slate-200 group-hover:text-blue-400 truncate">
+														{r.title}
+													</p>
+													<p className="text-[10px] text-slate-500 mt-1">
+														{new Date(r.createdAt).toLocaleDateString()}
+													</p>
+												</button>
+											))}
+										</div>
 									</div>
-									<div className="max-h-64 overflow-y-auto">
-										{roadmapHistory.map((r) => (
-											<button
-												key={r.id}
-												type="button"
-												onClick={() => handleLoadRoadmap(r.id)}
-												className="w-full text-left p-3 hover:bg-slate-800 border-b border-slate-800/50 last:border-0 transition-colors group"
-											>
-												<p className="text-sm font-bold text-slate-200 group-hover:text-blue-400 truncate">
-													{r.title}
-												</p>
-												<p className="text-[10px] text-slate-500 mt-1">
-													{new Date(r.createdAt).toLocaleDateString()}
-												</p>
-											</button>
-										))}
-									</div>
-								</div>
-							)}
-						</div>
-					)}
+								)}
+							</div>
+						)}
+
+						<button
+							type="button"
+							onClick={() => useAuthStore.getState().signOut()}
+							className="p-2 hover:bg-red-900/20 rounded-lg text-slate-400 hover:text-red-400 transition-colors"
+							title="Log Out"
+						>
+							<LogOut className="w-5 h-5" />
+						</button>
+					</div>
 				</header>
 				<div className="flex-1 overflow-hidden">
 					<ChatPanel

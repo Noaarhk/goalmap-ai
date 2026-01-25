@@ -1,5 +1,5 @@
 import operator
-from typing import Annotated, List, TypedDict
+from typing import Annotated, TypedDict
 
 from app.schemas.roadmap import Milestone
 
@@ -17,4 +17,4 @@ class RoadmapState(TypedDict):
     goal: str
     context: dict
     # We allow milestones to be appended to
-    milestones: Annotated[List[Milestone], operator.add]
+    milestones: Annotated[list[Milestone], operator.add]

@@ -4,9 +4,15 @@ import type { Message, MessageRole } from "../types";
 interface ChatStore {
     messages: Message[];
 
+    currentConversationId: string | null;
+    isLoading: boolean;
+
     // Actions
     addMessage: (role: MessageRole, content: string) => void;
     setMessages: (messages: Message[]) => void;
+    setCurrentConversationId: (id: string | null) => void;
+    loadConversation: (id: string, messages: Message[]) => void;
+    reset: () => void;
 }
 
 const INITIAL_MESSAGE: Message = {
@@ -19,6 +25,8 @@ const INITIAL_MESSAGE: Message = {
 
 export const useChatStore = create<ChatStore>((set) => ({
     messages: [INITIAL_MESSAGE],
+    currentConversationId: null,
+    isLoading: false,
 
     addMessage: (role, content) =>
         set((state) => ({
@@ -34,4 +42,7 @@ export const useChatStore = create<ChatStore>((set) => ({
         })),
 
     setMessages: (messages) => set({ messages }),
+    setCurrentConversationId: (id) => set({ currentConversationId: id }),
+    loadConversation: (id, messages) => set({ currentConversationId: id, messages: messages.length > 0 ? messages : [INITIAL_MESSAGE] }),
+    reset: () => set({ messages: [INITIAL_MESSAGE], currentConversationId: null, isLoading: false }),
 }));

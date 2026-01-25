@@ -1,4 +1,4 @@
-from typing import Annotated, Any, List, Optional, TypedDict
+from typing import Annotated, Any, TypedDict
 
 from app.schemas.discovery import BlueprintData
 from langgraph.graph.message import add_messages
@@ -15,7 +15,7 @@ class DiscoveryState(TypedDict):
         next_step: The next node to execute determined by the router.
     """
 
-    messages: Annotated[List[Any], add_messages]
+    messages: Annotated[list[Any], add_messages]
     blueprint: BlueprintData
-    user_intent: Optional[str]
+    user_intent: str | None
     analysis_status: str  # For UI feedback e.g. "analyzing"

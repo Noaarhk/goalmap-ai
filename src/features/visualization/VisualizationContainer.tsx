@@ -4,7 +4,7 @@ import {
 	Download,
 	Info,
 	Loader2,
-	Share2,
+	LogOut,
 	Swords,
 	X,
 } from "lucide-react";
@@ -16,8 +16,9 @@ import ReactFlow, {
 	ReactFlowProvider,
 } from "reactflow";
 import { consultNode } from "../../services/gemini";
-import { useAppStore, useRoadmapStore } from "../../stores";
+import { useAppStore, useAuthStore, useRoadmapStore } from "../../stores";
 import { AppState } from "../../types";
+
 import RoadmapNodeComponent from "./components/RoadmapNode";
 
 const nodeTypes = {
@@ -127,14 +128,17 @@ export function VisualizationContainer() {
 							<button
 								type="button"
 								className="p-3 bg-slate-800/80 border border-slate-700 rounded-xl hover:bg-slate-700 text-slate-300 transition-colors"
+								title="Download Roadmap"
 							>
 								<Download className="w-5 h-5" />
 							</button>
 							<button
 								type="button"
 								className="p-3 bg-slate-800/80 border border-slate-700 rounded-xl hover:bg-slate-700 text-slate-300 transition-colors"
+								title="Logout"
+								onClick={() => useAuthStore.getState().signOut()}
 							>
-								<Share2 className="w-5 h-5" />
+								<LogOut className="w-5 h-5" />
 							</button>
 							<button
 								type="button"

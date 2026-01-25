@@ -5,7 +5,7 @@ interface ScoreGaugeProps {
 	score: number;
 	readinessTips?: string[];
 	successTips?: string[];
-	isCalculating?: boolean;
+	isCalculating?: boolean | string;
 }
 
 const ScoreGauge: React.FC<ScoreGaugeProps> = ({
@@ -22,7 +22,8 @@ const ScoreGauge: React.FC<ScoreGaugeProps> = ({
 	};
 
 	const getStatus = () => {
-		if (isCalculating) return "Analyzing Response...";
+		if (isCalculating === true) return "Analyzing Response...";
+		if (typeof isCalculating === "string") return isCalculating;
 		if (score < 30) return "Gathering Intelligence";
 		if (score < 70) return "Drafting Blueprint";
 		return "Ready for Conquest";
@@ -37,7 +38,7 @@ const ScoreGauge: React.FC<ScoreGaugeProps> = ({
 					<h3
 						className={`text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2 ${isCalculating ? "text-amber-400" : "text-blue-500"}`}
 					>
-						{isCalculating && <Loader2 className="w-3 h-3 animate-spin" />}
+						{!!isCalculating && <Loader2 className="w-3 h-3 animate-spin" />}
 						{getStatus()}
 					</h3>
 					<p className="text-xl font-black text-white">
