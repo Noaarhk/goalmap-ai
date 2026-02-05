@@ -27,6 +27,8 @@ class NodeResponse(BaseModel):
     order: int
     is_assumed: bool
     status: NodeStatus
+    progress: int = 0
+    completion_criteria: str | None = None
     start_date: datetime | None = None
     end_date: datetime | None = None
     duration_days: int | None = None

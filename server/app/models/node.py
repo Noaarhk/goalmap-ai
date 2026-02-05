@@ -57,6 +57,10 @@ class Node(Base):
         nullable=True
     )  # Estimated duration in days
 
+    # Progress tracking (0-100)
+    progress: Mapped[int] = mapped_column(default=0)
+    completion_criteria: Mapped[str | None] = mapped_column(nullable=True)
+
     # Relationships
     roadmap: Mapped["Roadmap"] = relationship("Roadmap", back_populates="nodes")
 

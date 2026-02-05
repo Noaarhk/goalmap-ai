@@ -1,4 +1,4 @@
-from app.api.routes import conversations, discovery, roadmaps
+from app.api.routes import checkins, conversations, discovery, roadmaps
 from app.core.config import settings
 from app.core.exceptions import AppException
 from dotenv import load_dotenv
@@ -54,6 +54,11 @@ app.include_router(
     roadmaps.router,
     prefix=f"{settings.API_V1_STR}/roadmaps",
     tags=["roadmaps"],
+)
+app.include_router(
+    checkins.router,
+    prefix=settings.API_V1_STR,
+    tags=["checkins"],
 )
 
 if __name__ == "__main__":
