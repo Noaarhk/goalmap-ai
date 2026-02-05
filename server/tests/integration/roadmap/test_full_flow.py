@@ -1,5 +1,5 @@
 """
-Integration test for Roadmap generation with HIL flow and persistence.
+Integration tests for full Roadmap generation flow with HIL (Human-in-the-Loop).
 """
 
 from unittest.mock import AsyncMock, patch
@@ -13,8 +13,9 @@ from app.schemas.api.roadmaps import GenerateRoadmapRequest
 from app.services.roadmap_service import RoadmapStreamService
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+from tests.conftest import TestUnitOfWork
 
-# Mock Responses
+# Mock LLM Responses
 SKELETON_RESP = {
     "goal": {
         "label": "Full Flow Goal",
@@ -33,7 +34,6 @@ async def test_roadmap_full_flow_persistence(db_session):
     user_id = str(uuid4())
     conv_id = str(uuid4())
 
-    # Create conversation for FK
     conv = Conversation(id=conv_id, user_id=user_id, title="Test Conv")
     db_session.add(conv)
     await db_session.commit()
@@ -52,41 +52,18 @@ async def test_roadmap_full_flow_persistence(db_session):
     }
 
     with patch("langchain_core.runnables.base.RunnableSequence.ainvoke", mock_invoke):
-        # 3. Setup Service with test UoW
-        from app.core.uow import AsyncUnitOfWork
-
-        class TestUnitOfWork(AsyncUnitOfWork):
-            def __init__(self, session):
-                super().__init__()
-                self.session = session
-
-            async def __aenter__(self):
-                from app.repositories.conversation_repo import ConversationRepository
-                from app.repositories.roadmap_repo import RoadmapRepository
-
-                self.conversations = ConversationRepository(self.session)
-                self.roadmaps = RoadmapRepository(self.session)
-                return self
-
-            async def __aexit__(self, exc_type, exc_val, exc_tb):
-                if exc_type:
-                    await self.rollback()
-                else:
-                    await self.session.flush()
-
+        # 3. Setup Service with shared TestUnitOfWork
         uow = TestUnitOfWork(db_session)
         service = RoadmapStreamService(uow)
 
-        # 4. Run Stream (legacy one-shot flow)
+        # 4. Run Stream
         events = []
         async for event in service.stream_roadmap(request, user_id):
             events.append(event)
 
         # 5. Verify Events
-        # HIL flow: skeleton event + actions event(s) + complete event
         assert len(events) >= 2
 
-        # Check we got skeleton event
         skeleton_events = [e for e in events if "roadmap_skeleton" in e]
         assert len(skeleton_events) == 1
 
@@ -108,8 +85,6 @@ async def test_roadmap_full_flow_persistence(db_session):
 
         assert len(milestones) == 1
         assert milestones[0].label == "M1"
-
-        # Verify Actions saved (M1 actions + direct goal actions)
         assert len(actions) >= 1
 
 
@@ -142,27 +117,6 @@ async def test_roadmap_hil_flow_two_step(db_session):
     }
 
     with patch("langchain_core.runnables.base.RunnableSequence.ainvoke", mock_invoke):
-        from app.core.uow import AsyncUnitOfWork
-
-        class TestUnitOfWork(AsyncUnitOfWork):
-            def __init__(self, session):
-                super().__init__()
-                self.session = session
-
-            async def __aenter__(self):
-                from app.repositories.conversation_repo import ConversationRepository
-                from app.repositories.roadmap_repo import RoadmapRepository
-
-                self.conversations = ConversationRepository(self.session)
-                self.roadmaps = RoadmapRepository(self.session)
-                return self
-
-            async def __aexit__(self, exc_type, exc_val, exc_tb):
-                if exc_type:
-                    await self.rollback()
-                else:
-                    await self.session.flush()
-
         uow = TestUnitOfWork(db_session)
         service = RoadmapStreamService(uow)
 
@@ -171,7 +125,6 @@ async def test_roadmap_hil_flow_two_step(db_session):
         thread_id = None
         async for event in service.stream_skeleton(request, user_id):
             skeleton_events.append(event)
-            # Extract thread_id from skeleton event
             if "thread_id" in event:
                 import json
 
@@ -187,7 +140,6 @@ async def test_roadmap_hil_flow_two_step(db_session):
         async for event in service.stream_actions(thread_id, user_id, request):
             action_events.append(event)
 
-        # Should have actions + complete events
         assert len(action_events) >= 1
 
         # Verify persistence

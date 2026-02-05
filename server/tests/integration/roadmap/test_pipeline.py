@@ -1,18 +1,19 @@
 """
-Tests for Roadmap Pipeline (no graph).
+Tests for Roadmap Pipeline functions.
 
-Tests the plain async functions for roadmap generation.
+Tests the plain async functions for roadmap generation (skeleton & actions).
 """
 
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from app.agents.roadmap.pipeline import generate_actions, generate_skeleton
+from app.schemas.events.roadmap import GoalNode, Milestone
 
 
 @pytest.mark.asyncio
 async def test_generate_skeleton():
-    """Test skeleton generation function."""
+    """Test skeleton generation function returns valid GoalNode structure."""
     context = {
         "goal": "Test Goal",
         "why": "Testing",
@@ -48,10 +49,7 @@ async def test_generate_skeleton():
 
 @pytest.mark.asyncio
 async def test_generate_actions():
-    """Test action generation for milestones."""
-    from app.schemas.events.roadmap import GoalNode, Milestone
-
-    # Create a skeleton goal_node
+    """Test action generation populates milestones with actions."""
     goal_node = GoalNode(
         id="goal-1",
         label="Test Goal",
@@ -85,8 +83,8 @@ async def test_generate_actions():
 
 
 @pytest.mark.asyncio
-async def test_full_pipeline():
-    """Test full pipeline: skeleton -> actions."""
+async def test_full_pipeline_skeleton_then_actions():
+    """Test full pipeline: skeleton → actions."""
     context = {
         "goal": "Full Pipeline Goal",
         "why": "Testing full flow",

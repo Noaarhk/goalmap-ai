@@ -1,3 +1,8 @@
+"""
+Integration test for Blueprint → Roadmap flow.
+Tests the complete journey from conversation creation to roadmap generation.
+"""
+
 from uuid import uuid4
 
 import pytest
@@ -6,22 +11,19 @@ from app.repositories.conversation_repo import ConversationRepository
 from app.repositories.roadmap_repo import RoadmapRepository
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+from tests.conftest import TestUnitOfWork
 
 
 @pytest.mark.asyncio
 async def test_blueprint_persistence_and_roadmap_creation(db_session):
-    # 1. Setup Repository
-    conv_repo = ConversationRepository(db_session)
-    roadmap_repo = RoadmapRepository(db_session)
-
-    # 2. Create Conversation
+    """Test full flow: create conversation → add blueprint → create roadmap."""
     user_id = str(uuid4())
     conv = Conversation(user_id=user_id, title="Integration Test Quest")
     db_session.add(conv)
     await db_session.commit()
     await db_session.refresh(conv)
 
-    # 3. Simulate Discovery Agent Output (Blueprint Data)
+    # 2. Simulate Discovery Agent Output (Blueprint Data)
     agent_output = {
         "goal": "Become a Python Expert",
         "why": "To build amazing AI agents",
@@ -31,26 +33,7 @@ async def test_blueprint_persistence_and_roadmap_creation(db_session):
         "field_scores": {"goal": 5, "why": 5},
     }
 
-    # 4. Update Blueprint with UoW
-    from app.core.uow import AsyncUnitOfWork
-
-    class TestUnitOfWork(AsyncUnitOfWork):
-        def __init__(self, session):
-            super().__init__()
-            self.session = session
-
-        async def __aenter__(self):
-            from app.repositories.conversation_repo import ConversationRepository
-            from app.repositories.roadmap_repo import RoadmapRepository
-
-            self.conversations = ConversationRepository(self.session)
-            self.roadmaps = RoadmapRepository(self.session)
-            return self
-
-        async def __aexit__(self, exc_type, exc_val, exc_tb):
-            if not exc_type:
-                await self.session.flush()
-
+    # 3. Update Blueprint using shared TestUnitOfWork
     async with TestUnitOfWork(db_session) as uow:
         await uow.conversations.update_blueprint(conv.id, agent_output)
         await uow.commit()  # Explicitly commit in test to verify persistent state

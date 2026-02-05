@@ -1,3 +1,7 @@
+"""
+Tests for Roadmap persistence through the service layer.
+"""
+
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -10,15 +14,16 @@ from app.schemas.events.roadmap import ActionNode, GoalNode, Milestone
 from app.services.roadmap_service import RoadmapStreamService
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+from tests.conftest import TestUnitOfWork
 
 
 @pytest.mark.asyncio
 async def test_roadmap_service_persistence(db_session):
-    # 1. Setup Data
+    """Test that RoadmapStreamService correctly persists roadmap with nodes."""
+    # 1. Setup
     user_id = str(uuid4())
     conv_id = str(uuid4())
 
-    # Create conversation for FK constraint
     conv = Conversation(id=conv_id, user_id=user_id, title="Test Conv")
     db_session.add(conv)
     await db_session.commit()
@@ -29,7 +34,7 @@ async def test_roadmap_service_persistence(db_session):
         why="Verification",
     )
 
-    # 2. Construct GoalNode with Actions
+    # 2. Build GoalNode structure
     action_id = f"act-{str(uuid4())[:8]}"
     ms_id = f"ms-{str(uuid4())[:8]}"
 
@@ -57,39 +62,14 @@ async def test_roadmap_service_persistence(db_session):
         actions=[],
     )
 
-    # 3. Call Service Persistence (DI)
-    from app.core.uow import AsyncUnitOfWork
-
-    class TestUnitOfWork(AsyncUnitOfWork):
-        def __init__(self, session):
-            super().__init__()
-            self.session = session
-
-        async def __aenter__(self):
-            from app.repositories.conversation_repo import ConversationRepository
-            from app.repositories.roadmap_repo import RoadmapRepository
-
-            self.conversations = ConversationRepository(self.session)
-            self.roadmaps = RoadmapRepository(self.session)
-            return self
-
-        async def __aexit__(self, exc_type, exc_val, exc_tb):
-            if exc_type:
-                await self.rollback()
-            else:
-                await self.session.flush()
-
-    # Create Service with injected dependencies
+    # 3. Call Service (using shared TestUnitOfWork from conftest)
     uow = TestUnitOfWork(db_session)
-    # We can mock the graph manager as it's not used in _persist_roadmap
     mock_graph_manager = MagicMock()
     service = RoadmapStreamService(uow, mock_graph_manager)
 
     await service._persist_roadmap(request, goal_node, user_id)
 
-    # 4. Verify in DB
-
-    # Find roadmap by conversation_id
+    # 4. Verify persistence
     stmt = (
         select(Roadmap)
         .where(Roadmap.conversation_id == conv_id)
@@ -101,13 +81,12 @@ async def test_roadmap_service_persistence(db_session):
     assert roadmap is not None
     assert roadmap.title == "Service Persistence Test"
 
-    # Check Nodes
+    # Verify nodes
     nodes = roadmap.nodes
     milestone = next((n for n in nodes if n.type == NodeType.MILESTONE), None)
     assert milestone is not None
     assert milestone.label == "Persisted Milestone"
 
-    # CRITICAL: Check Action Node
     action = next((n for n in nodes if n.type == NodeType.ACTION), None)
     assert action is not None
     assert action.label == "Persisted Action"
