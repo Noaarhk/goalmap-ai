@@ -1,28 +1,25 @@
 """
-Optimized Discovery Graph v3 - Pipeline Architecture
-Flow: START -> analyze_turn (Extraction) -> generate_chat (Response) -> END
+DEPRECATED: Discovery no longer uses LangGraph.
+The pipeline is now implemented as plain async functions in pipeline.py.
+
+This module is kept for backward compatibility but will be removed in a future version.
 """
 
-from app.agents.discovery.nodes import analyze_turn, generate_chat
-from app.agents.discovery.state import DiscoveryState
-from langgraph.graph import END, START, StateGraph
+import warnings
 
-# Build Graph
-graph_builder = StateGraph(DiscoveryState)
-
-# Add Nodes
-graph_builder.add_node("analyze_turn", analyze_turn)
-graph_builder.add_node("generate_chat", generate_chat)
-
-# Add Edges: Sequential Flow
-graph_builder.add_edge(START, "analyze_turn")
-graph_builder.add_edge("analyze_turn", "generate_chat")
-graph_builder.add_edge("generate_chat", END)
+warnings.warn(
+    "app.agents.discovery.graph is deprecated. "
+    "Discovery now uses plain async functions in app.agents.discovery.pipeline.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 def get_graph(checkpointer=None):
-    """Returns the discovery pipeline graph."""
-    return graph_builder.compile(checkpointer=checkpointer)
+    """Deprecated. Discovery no longer uses a graph."""
+    raise NotImplementedError(
+        "Discovery graph has been removed. Use pipeline functions directly."
+    )
 
 
-discovery_graph = get_graph()
+discovery_graph = None

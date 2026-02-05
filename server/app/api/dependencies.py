@@ -170,14 +170,14 @@ async def get_roadmap_repo(
 def get_discovery_service(
     uow: "AsyncUnitOfWork" = Depends(get_uow),
 ) -> "DiscoveryStreamService":
-    from app.services.discovery_service import DiscoveryStreamService, discovery_manager
+    from app.services.discovery_service import DiscoveryStreamService
 
-    return DiscoveryStreamService(uow, discovery_manager)
+    return DiscoveryStreamService(uow)
 
 
 def get_roadmap_service(
     uow: "AsyncUnitOfWork" = Depends(get_uow),
 ) -> "RoadmapStreamService":
-    from app.services.roadmap_service import RoadmapStreamService, roadmap_manager
+    from app.services.roadmap_service import RoadmapStreamService
 
-    return RoadmapStreamService(uow, roadmap_manager)
+    return RoadmapStreamService(uow)
