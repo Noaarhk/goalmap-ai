@@ -33,6 +33,8 @@ interface RoadmapStore {
 
     // Streaming state for TransitionView
     streamingGoal: string | null;
+    streamingStatus: string | null;
+    streamingStep: number;
     streamingMilestones: StreamingMilestone[];
     streamingActions: StreamingAction[];
 
@@ -48,6 +50,8 @@ interface RoadmapStore {
     
     // Streaming Actions
     setStreamingGoal: (goal: string | null) => void;
+    setStreamingStatus: (status: string | null) => void;
+    setStreamingStep: (step: number) => void;
     setStreamingMilestones: (milestones: StreamingMilestone[]) => void;
     addStreamingActions: (actions: StreamingAction[]) => void;
     resetStreaming: () => void;
@@ -67,6 +71,8 @@ export const useRoadmapStore = create<RoadmapStore>()(
             edges: [],
             selectedNodeId: null,
             streamingGoal: null,
+            streamingStatus: null,
+            streamingStep: 0,
             streamingMilestones: [],
             streamingActions: [],
 
@@ -112,12 +118,16 @@ export const useRoadmapStore = create<RoadmapStore>()(
 
             // Streaming actions
             setStreamingGoal: (streamingGoal) => set({ streamingGoal }),
+            setStreamingStatus: (streamingStatus) => set({ streamingStatus }),
+            setStreamingStep: (streamingStep) => set({ streamingStep }),
             setStreamingMilestones: (streamingMilestones) => set({ streamingMilestones }),
             addStreamingActions: (actions) => set((state) => ({
                 streamingActions: [...state.streamingActions, ...actions]
             })),
             resetStreaming: () => set({
                 streamingGoal: null,
+                streamingStatus: null,
+                streamingStep: 0,
                 streamingMilestones: [],
                 streamingActions: []
             }),
@@ -133,6 +143,7 @@ export const useRoadmapStore = create<RoadmapStore>()(
                 edges: [], 
                 selectedNodeId: null,
                 streamingGoal: null,
+                streamingStatus: null,
                 streamingMilestones: [],
                 streamingActions: []
             }),

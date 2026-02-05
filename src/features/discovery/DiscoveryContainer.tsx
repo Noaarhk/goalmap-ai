@@ -47,6 +47,8 @@ export function DiscoveryContainer() {
 		setNodes: setFlowNodes,
 		setEdges: setFlowEdges,
 		setStreamingGoal,
+		setStreamingStatus,
+		setStreamingStep,
 		setStreamingMilestones,
 		addStreamingActions,
 		resetStreaming,
@@ -271,6 +273,11 @@ export function DiscoveryContainer() {
 		setAppState(AppState.TRANSITION);
 		resetStreaming(); // Reset streaming state for fresh TransitionView
 
+		// Optimize: Set goal immediately for TransitionView
+		setStreamingGoal(blueprint.goal || "New Roadmap");
+		setStreamingStatus("Analyzing your goal...");
+		setStreamingStep(1); // Step 1: Goal Analysis
+
 		// Local accumulator for the streaming session
 		const currentRoadmap: RoadmapData = {
 			id: `rm-${Date.now()}`,
@@ -306,6 +313,8 @@ export function DiscoveryContainer() {
 
 						// Update streaming state for TransitionView
 						setStreamingGoal(goal.label);
+						setStreamingStatus("Designing milestones...");
+						setStreamingStep(2); // Step 2: Milestone Design
 						setStreamingMilestones(
 							goal.milestones.map((m: any) => ({
 								id: m.id,
@@ -342,13 +351,17 @@ export function DiscoveryContainer() {
 						currentRoadmap.nodes = [goalNode, ...milestoneNodes];
 						currentRoadmap.edges = milestoneEdges;
 						currentRoadmap.summary = goal.details || "Quest roadmap";
-						updateView();
+						// Don't call updateView() here - stay in TransitionView to show streaming progress
 					} else if (event.type === "roadmap_actions") {
 						// 2. Expansion: Add actions to a milestone
 						const milestoneId = event.data.milestone_id;
 						const actions = event.data.actions;
 
 						// Update streaming state for TransitionView
+						if (useRoadmapStore.getState().streamingStep < 3) {
+							setStreamingStep(3); // Step 3: Action Planning (only set once)
+						}
+						setStreamingStatus(`Planning actions for milestone...`);
 						addStreamingActions(
 							actions.map((a: any) => ({
 								milestoneId,
@@ -381,8 +394,10 @@ export function DiscoveryContainer() {
 
 						currentRoadmap.nodes.push(...actionNodes);
 						currentRoadmap.edges.push(...actionEdges);
-						updateView();
+						// Don't call updateView() here - stay in TransitionView to show streaming progress
 					} else if (event.type === "roadmap_direct_actions") {
+						setStreamingStatus("Finalizing roadmap...");
+						setStreamingStep(4); // Step 4: Finalizing
 						// 3. Direct Actions: Add actions directly to goal
 						const actions = event.data.actions;
 						const goalNode = currentRoadmap.nodes.find(
@@ -415,6 +430,11 @@ export function DiscoveryContainer() {
 					}
 				},
 			);
+
+			// Fallback: If stream completed but direct_actions didn't fire (edge case)
+			if (currentRoadmap.nodes.length > 0) {
+				updateView();
+			}
 		} catch (e) {
 			console.error(e);
 			alert("The Oracle's vision is clouded. Please try again.");

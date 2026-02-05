@@ -1,10 +1,22 @@
-import { CheckCircle, Loader2, Target } from "lucide-react";
+import { Check, CheckCircle, Loader2, Target } from "lucide-react";
 import type React from "react";
 import { useRoadmapStore } from "../../stores/useRoadmapStore";
 
+const steps = [
+	{ id: 1, label: "Analysis" },
+	{ id: 2, label: "Design" },
+	{ id: 3, label: "Planning" },
+	{ id: 4, label: "Ready" },
+];
+
 const TransitionView: React.FC = () => {
-	const { streamingGoal, streamingMilestones, streamingActions } =
-		useRoadmapStore();
+	const {
+		streamingGoal,
+		streamingStatus,
+		streamingStep,
+		streamingMilestones,
+		streamingActions,
+	} = useRoadmapStore();
 
 	const getActionsForMilestone = (milestoneId: string) =>
 		streamingActions.filter((a) => a.milestoneId === milestoneId);
@@ -18,12 +30,56 @@ const TransitionView: React.FC = () => {
 				<Target className="w-16 h-16 text-amber-400 animate-pulse" />
 			</div>
 
-			<div className="text-center mb-8">
-				<h2 className="text-2xl font-bold mb-2">Constructing Your Roadmap</h2>
-				<p className="text-slate-400 text-sm">
-					{hasStreamingData
-						? "Building your path to success..."
-						: "Analyzing your goals..."}
+			<div className="text-center mb-8 w-full max-w-lg px-6">
+				<h2 className="text-2xl font-bold mb-6">Constructing Your Roadmap</h2>
+
+				{/* Progress Stepper */}
+				<div className="flex items-center justify-between relative mb-8">
+					{/* Connecting Line */}
+					<div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-0.5 bg-slate-800 -z-10" />
+					<div
+						className="absolute left-0 top-1/2 -translate-y-1/2 h-0.5 bg-blue-500 transition-all duration-500 ease-in-out -z-10"
+						style={{
+							width: `${Math.max(0, (streamingStep - 1) / (steps.length - 1)) * 100}%`,
+						}}
+					/>
+
+					{steps.map((step) => {
+						const isCompleted = streamingStep > step.id;
+						const isActive = streamingStep >= step.id;
+
+						return (
+							<div key={step.id} className="flex flex-col items-center gap-2">
+								<div
+									className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
+										isActive
+											? "bg-[#101722] border-blue-500 text-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.5)]"
+											: "bg-[#101722] border-slate-700 text-slate-600"
+									}`}
+								>
+									{isCompleted ? (
+										<Check className="w-4 h-4" />
+									) : (
+										<span className="text-xs font-bold">{step.id}</span>
+									)}
+								</div>
+								<span
+									className={`text-xs font-bold uppercase tracking-wider transition-colors duration-300 ${
+										isActive ? "text-blue-400" : "text-slate-600"
+									}`}
+								>
+									{step.label}
+								</span>
+							</div>
+						);
+					})}
+				</div>
+
+				<p className="text-slate-400 text-sm h-6">
+					{streamingStatus ||
+						(hasStreamingData
+							? "Building your path to success..."
+							: "Analyzing your goals...")}
 				</p>
 			</div>
 
