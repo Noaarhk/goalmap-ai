@@ -5,8 +5,15 @@ from app.models.blueprint import Blueprint
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.repositories.base import BaseRepository
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from sqlalchemy.orm import selectinload
+
+
+def _get_blueprint_columns() -> set[str]:
+    """Get updatable columns from Blueprint model dynamically."""
+    mapper = inspect(Blueprint)
+    excluded = {"id", "conversation_id", "created_at", "updated_at"}
+    return {c.key for c in mapper.columns if c.key not in excluded}
 
 
 class ConversationRepository(BaseRepository[Conversation]):
@@ -80,41 +87,10 @@ class ConversationRepository(BaseRepository[Conversation]):
     ) -> Conversation | None:
         conversation = await self.get_with_messages_and_blueprint(conversation_id)
         if conversation:
-            # Valid DB columns for blueprint
-            valid_columns = {
-                "start_point",
-                "end_point",
-                "motivations",
-                "milestones",
-                "field_scores",
-                "timeline",
-                "obstacles",
-                "resources",
+            valid_columns = _get_blueprint_columns()
+            mapped_data = {
+                k: v for k, v in blueprint_data.items() if k in valid_columns
             }
-            mapped_data = {}
-
-            # 1. Direct Field Mapping (snake_case only)
-            for k, v in blueprint_data.items():
-                if k in valid_columns:
-                    mapped_data[k] = v
-
-            # 2. Semantic Mapping (Agent Output -> DB Model)
-            # 'goal' from Agent -> 'end_point' in DB
-            if "goal" in blueprint_data and "end_point" not in mapped_data:
-                mapped_data["end_point"] = blueprint_data["goal"]
-
-            # 'why' from Agent -> 'motivations' list in DB
-            if "why" in blueprint_data and "motivations" not in mapped_data:
-                why_text = blueprint_data["why"]
-                mapped_data["motivations"] = [why_text] if why_text else []
-
-            # 3. Direct Mapping for Context Fields
-            if "timeline" in blueprint_data:
-                mapped_data["timeline"] = blueprint_data["timeline"]
-            if "obstacles" in blueprint_data:
-                mapped_data["obstacles"] = blueprint_data["obstacles"]
-            if "resources" in blueprint_data:
-                mapped_data["resources"] = blueprint_data["resources"]
 
             if conversation.blueprint:
                 # Update existing
