@@ -87,3 +87,63 @@ async def db_session(engine) -> AsyncGenerator[AsyncSession, None]:
     async_session = async_sessionmaker(engine, expire_on_commit=False)
     async with async_session() as session:
         yield session
+
+
+# =============================================================================
+# Seeded Data Fixtures
+# =============================================================================
+
+
+@pytest.fixture
+async def seeded_user_id() -> str:
+    """Provide a consistent test user ID."""
+    from tests.fixtures.users import TEST_USER_1
+
+    return TEST_USER_1["id"]
+
+
+@pytest.fixture
+async def seeded_conversation(db_session, seeded_user_id):
+    """
+    Provide a pre-created Conversation with Blueprint.
+    Returns the conversation with blueprint already attached.
+    """
+    from app.repositories.conversation_repo import ConversationRepository
+    from tests.fixtures.conversations import (
+        create_conversation,
+        get_sample_blueprint_data,
+    )
+
+    # Create conversation
+    conv = create_conversation(user_id=seeded_user_id, title="Seeded Test Conversation")
+    db_session.add(conv)
+    await db_session.commit()
+    await db_session.refresh(conv)
+
+    # Add blueprint
+    repo = ConversationRepository(db_session)
+    await repo.update_blueprint(conv.id, get_sample_blueprint_data())
+
+    # Fetch with relations loaded
+    return await repo.get_with_messages_and_blueprint(conv.id)
+
+
+@pytest.fixture
+async def seeded_roadmap(db_session, seeded_conversation):
+    """
+    Provide a pre-created Roadmap linked to a Conversation.
+    Includes milestones and actions.
+    """
+    from app.repositories.roadmap_repo import RoadmapRepository
+    from tests.fixtures.roadmaps import get_sample_milestones_data
+
+    repo = RoadmapRepository(db_session)
+    roadmap = await repo.create_with_nodes(
+        user_id=seeded_conversation.user_id,
+        title="Seeded Test Roadmap",
+        goal="Master Python Programming",
+        milestones_data=get_sample_milestones_data(),
+        conversation_id=seeded_conversation.id,
+    )
+
+    return await repo.get(roadmap.id)
