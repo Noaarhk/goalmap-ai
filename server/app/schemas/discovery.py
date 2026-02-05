@@ -19,9 +19,10 @@ class BlueprintData(BaseModel):
     obstacles: str | None = None
     resources: str | None = None
     milestones: list[str] = Field(default_factory=list)
-    fieldScores: FieldScores = Field(default_factory=FieldScores)
-    readinessTips: list[str] = Field(default_factory=list)
-    successTips: list[str] = Field(default_factory=list)
+    field_scores: FieldScores = Field(default_factory=FieldScores)
+    readiness_tips: list[str] = Field(default_factory=list)
+    success_tips: list[str] = Field(default_factory=list)
+    uncertainties: list[dict] = Field(default_factory=list)
 
 
 # --- SSE Event Models ---
@@ -46,9 +47,10 @@ class BlueprintUpdateEventData(BaseModel):
     obstacles: str | None = None
     resources: str | None = None
     milestones: list[str] | None = None
-    fieldScores: dict[str, int] | None = None
-    readinessTips: list[str] | None = None
-    successTips: list[str] | None = None
+    field_scores: dict[str, int] | None = None
+    readiness_tips: list[str] | None = None
+    success_tips: list[str] | None = None
+    uncertainties: list[dict] | None = None
 
 
 class ErrorEventData(BaseModel):
