@@ -13,6 +13,22 @@ from app.services.gemini import get_llm, parse_gemini_output
 from app.services.langfuse import get_prompt
 from langchain_core.messages import AIMessage
 from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+
+# Build fallback ChatPromptTemplates
+FALLBACK_ANALYSIS_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        ("system", FALLBACK_ANALYSIS_SYSTEM_PROMPT),
+        ("human", "Latest: {last_message}\n\nHistory:\n{history}"),
+    ]
+)
+
+FALLBACK_CHAT_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        ("system", FALLBACK_CHAT_SYSTEM_PROMPT),
+        ("human", "Latest: {last_message}\n\nHistory:\n{history}"),
+    ]
+)
 
 llm = get_llm()
 
@@ -45,8 +61,8 @@ async def analyze_turn(state: DiscoveryState) -> dict[str, Any]:
         "history": history_str,
     }
 
-    # Fetch prompt from Langfuse or use fallback (type guaranteed by wrapper)
-    prompt = get_prompt("discovery-analysis", fallback=FALLBACK_ANALYSIS_SYSTEM_PROMPT)
+    # Fetch prompt from Langfuse or use fallback
+    prompt = get_prompt("discovery-analysis", fallback=FALLBACK_ANALYSIS_PROMPT)
 
     # dedicated chain for analysis
     chain = prompt | llm | parse_gemini_output | JsonOutputParser()
@@ -132,8 +148,8 @@ async def generate_chat(state: DiscoveryState) -> dict[str, Any]:
         "history": history_str,
     }
 
-    # Fetch prompt from Langfuse or use fallback (type guaranteed by wrapper)
-    prompt = get_prompt("discovery-chat", fallback=FALLBACK_CHAT_SYSTEM_PROMPT)
+    # Fetch prompt from Langfuse or use fallback
+    prompt = get_prompt("discovery-chat", fallback=FALLBACK_CHAT_PROMPT)
 
     # Chain for generating response string
     chain = prompt | llm | StrOutputParser()
