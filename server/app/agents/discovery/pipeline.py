@@ -11,7 +11,6 @@ from app.agents.discovery.prompts import (
     FALLBACK_CHAT_SYSTEM_PROMPT,
     GREETING_INSTRUCTION_DEFAULT,
     GREETING_INSTRUCTION_FIRST_TURN,
-    SUGGESTION_INSTRUCTION,
 )
 from app.schemas.api.chat import BlueprintData
 from app.services.gemini import get_llm, parse_gemini_output
@@ -107,22 +106,14 @@ async def generate_chat_stream(
     last_message = messages[-1].content if messages else ""
     history_str = "\n".join([f"{m.type}: {m.content}" for m in messages[-6:]])
 
-    # Check for suggestion request
-    is_asking_for_suggestions = any(
-        keyword in last_message.lower()
-        for keyword in ["제안", "추천", "도와", "알려", "예시", "suggest", "help"]
-    )
-
     greeting_instruction = (
         GREETING_INSTRUCTION_FIRST_TURN
         if is_first_turn
         else GREETING_INSTRUCTION_DEFAULT
     )
-    suggestion_instruction = SUGGESTION_INSTRUCTION if is_asking_for_suggestions else ""
 
     prompt_variables = {
         "greeting_instruction": greeting_instruction,
-        "suggestion_instruction": suggestion_instruction,
         "current_goal": blueprint.goal or "Not set",
         "goal_score": blueprint.field_scores.goal,
         "current_why": blueprint.why or "Not set",
