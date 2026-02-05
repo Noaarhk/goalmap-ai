@@ -1,7 +1,6 @@
-import operator
-from typing import Annotated, TypedDict
+from typing import TypedDict
 
-from app.schemas.roadmap import Milestone
+from app.schemas.roadmap import GoalNode
 
 
 class RoadmapState(TypedDict):
@@ -9,12 +8,11 @@ class RoadmapState(TypedDict):
     State for the Roadmap Generation Agent.
 
     Attributes:
-        goal: The goal to generate the roadmap for.
-        context: Additional context like why, timeline, etc.
-        milestones: The list of milestones generated so far.
+        context: All input context (goal, why, timeline, obstacles, resources).
+        goal_node: The complete hierarchical goal structure with IDs assigned.
     """
 
-    goal: str
-    context: dict
-    # We allow milestones to be appended to
-    milestones: Annotated[list[Milestone], operator.add]
+    # Input context from discovery
+    context: dict  # {"goal": "...", "why": "...", "timeline": "...", ...}
+    # Output - hierarchical goal structure (contains milestones and actions)
+    goal_node: GoalNode | None

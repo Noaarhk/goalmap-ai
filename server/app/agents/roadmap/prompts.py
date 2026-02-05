@@ -1,29 +1,65 @@
-# Strategic Planner Prompt
-STRATEGIC_PLANNER_PROMPT = """You are a Strategic Planner.
-Break down the goal into 3-5 major sequential milestones.
+# Strategic Planner Prompt - Generates goal structure (no IDs)
+STRATEGIC_PLANNER_PROMPT = """You are a Strategic Planner creating a hierarchical goal structure.
 
 Goal: {goal}
 Context: {context}
 
-Return JSON list of milestones:
+Create a goal structure with 3-5 major milestones.
+
+Return JSON (NO IDs - they will be assigned by the system):
 {{
-    "milestones": [
-        {{ "id": "m1", "label": "Milestone Title", "is_assumed": false, "order": 1, "details": "Brief description" }}
-    ]
+    "goal": {{
+        "label": "{goal}",
+        "details": "Main objective summary",
+        "milestones": [
+            {{
+                "label": "Milestone Title",
+                "details": "Brief description",
+                "is_assumed": false,
+                "actions": []
+            }}
+        ],
+        "actions": []
+    }}
 }}
 """
 
-# Tactical Task Manager Prompt
-TACTICAL_TASK_MANAGER_PROMPT = """You are a Tactical Task Manager.
-Generate 3-5 specific execution tasks for the given milestone.
+# Action Generator Prompt - Generates actions for a milestone (no IDs)
+ACTION_GENERATOR_PROMPT = """You are an Action Planner.
+Generate 3-5 specific action items for the given milestone.
 
 Goal: {goal}
 Milestone: {milestone_label} ({milestone_details})
 
-Return JSON list of tasks:
+Return JSON (NO IDs):
 {{
-    "tasks": [
-        {{ "id": "t1", "label": "Action Item", "type": "task", "status": "pending", "details": "..." }}
+    "actions": [
+        {{
+            "label": "Action Item",
+            "details": "Specific action description",
+            "is_assumed": false
+        }}
+    ]
+}}
+"""
+
+# Direct Actions Prompt - Generates cross-cutting actions (no IDs)
+DIRECT_ACTIONS_PROMPT = """You are an Action Planner.
+Generate 1-3 cross-cutting actions that apply to the entire goal (not specific to any milestone).
+
+Goal: {goal}
+Context: {context}
+
+Examples: "Daily practice", "Track progress weekly", "Join community"
+
+Return JSON (NO IDs):
+{{
+    "actions": [
+        {{
+            "label": "Cross-cutting Action",
+            "details": "Action that supports the whole journey",
+            "is_assumed": false
+        }}
     ]
 }}
 """

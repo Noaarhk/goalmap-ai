@@ -1,11 +1,18 @@
 from typing import Any
 
 from app.agents.roadmap.prompts import (
+    ACTION_GENERATOR_PROMPT,
+    DIRECT_ACTIONS_PROMPT,
     STRATEGIC_PLANNER_PROMPT,
-    TACTICAL_TASK_MANAGER_PROMPT,
 )
 from app.agents.roadmap.state import RoadmapState
-from app.schemas.roadmap import Milestone, Task
+from app.schemas.roadmap import (
+    ActionContent,
+    GoalContent,
+    MilestoneContent,
+    assign_action_ids,
+    assign_goal_ids,
+)
 from app.services.gemini import get_llm, parse_gemini_output
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -13,98 +20,134 @@ from langchain_core.prompts import ChatPromptTemplate
 llm = get_llm(model="gemini-3-pro-preview")
 
 
-async def plan_milestones(state: RoadmapState) -> dict[str, Any]:
+async def plan_skeleton(state: RoadmapState) -> dict[str, Any]:
     """
-    Generates the high-level milestones (skeleton) for the goal.
+    Generates the roadmap skeleton: GoalNode with milestones (empty actions).
+    LLM generates content, Backend assigns UUIDs.
     """
-    goal = state["goal"]
     context = state["context"]
+    goal_text = context.get("goal", "")
 
     prompt = ChatPromptTemplate.from_messages(
         [
-            (
-                "system",
-                STRATEGIC_PLANNER_PROMPT,
-            ),
-            ("human", "Plan the milestones."),
+            ("system", STRATEGIC_PLANNER_PROMPT),
+            ("human", "Create the roadmap skeleton."),
         ]
     )
 
     chain = prompt | llm | parse_gemini_output | JsonOutputParser()
     try:
-        result = await chain.ainvoke({"goal": goal, "context": str(context)})
-        milestones_data = result.get("milestones", [])
+        result = await chain.ainvoke({"goal": goal_text, "context": str(context)})
 
-        # Convert to objects
-        milestones = []
-        for m in milestones_data:
-            milestones.append(Milestone(**m))
+        # Parse LLM output as content (no IDs)
+        goal_data = result.get("goal", {})
+        milestones_data = goal_data.pop("milestones", [])
 
-        return {"milestones": milestones}
+        goal_content = GoalContent(
+            label=goal_data.get("label", goal_text),
+            details=goal_data.get("details"),
+            milestones=[MilestoneContent(**ms) for ms in milestones_data],
+            actions=[],  # Will be filled later
+        )
+
+        # Assign UUIDs
+        goal_node = assign_goal_ids(goal_content)
+
+        return {"goal_node": goal_node}
     except Exception as e:
-        print(f"Milestone planning error: {e}")
-        return {"milestones": []}
+        print(f"Skeleton planning error: {e}")
+        return {"goal_node": None}
 
 
-async def expand_milestone_tasks(state: RoadmapState) -> dict[str, Any]:
+async def generate_actions(state: RoadmapState) -> dict[str, Any]:
     """
-    NOTE: In LangGraph, to run parallel map-reduce style expansion,
-    we often handle this orchestration in the graph definition using `Send` API.
-
-    This node function logic is intended to be called for a SINGLE milestone,
-    or we can modify it to process all if we don't use the parallel `Send`.
-
-    For simplicity in this v1, let's process them all sequentially here,
-    OR (better for streaming) realize that the graph will map this.
-
-    Let's assume this node receives a specific milestone in the state (via Send).
-    See graph.py for how we wire this.
+    Generates action items for all milestones.
+    LLM generates content, Backend assigns UUIDs.
     """
-    pass  # Implemented in graph logic usually or as a "generate tasks for ALL milestones"
+    goal_node = state["goal_node"]
+    if not goal_node:
+        return {"goal_node": None}
 
-
-# Alternative: Single node generating tasks for all milestones (easier for v1)
-async def generate_tasks_for_all(state: RoadmapState) -> dict[str, Any]:
-    milestones = state["milestones"]
-    goal = state["goal"]
-
-    # We will just return the same milestones list but populated with tasks.
-    # IN REALITY, for true parallel streaming, we want separate nodes.
-    # But let's start simple: iterate and generate.
-
-    updated_milestones = []
+    context = state["context"]
+    goal_text = context.get("goal", "")
 
     prompt = ChatPromptTemplate.from_messages(
         [
-            (
-                "system",
-                TACTICAL_TASK_MANAGER_PROMPT,
-            ),
-            ("human", "Generate tasks."),
+            ("system", ACTION_GENERATOR_PROMPT),
+            ("human", "Generate actions."),
         ]
     )
 
     chain = prompt | llm | parse_gemini_output | JsonOutputParser()
 
-    for ms in milestones:
+    updated_milestones = []
+
+    for ms in goal_node.milestones:
         try:
             result = await chain.ainvoke(
                 {
-                    "goal": goal,
+                    "goal": goal_text,
                     "milestone_label": ms.label,
-                    "milestone_details": ms.details,
+                    "milestone_details": ms.details or "",
                 }
             )
-            tasks_data = result.get("tasks", [])
-            tasks = [Task(**t) for t in tasks_data]
 
-            # Create new milestone object with tasks
-            new_ms = ms.model_copy()
-            new_ms.tasks = tasks
-            updated_milestones.append(new_ms)
+            # Parse LLM output as content (no IDs)
+            actions_data = result.get("actions", [])
+            action_contents = [ActionContent(**a) for a in actions_data]
+
+            # Assign UUIDs
+            actions = assign_action_ids(action_contents, ms.id)
+
+            # Update milestone with actions
+            updated_ms = ms.model_copy(update={"actions": actions})
+            updated_milestones.append(updated_ms)
 
         except Exception as e:
-            print(f"Task gen error for {ms.label}: {e}")
+            print(f"Action gen error for {ms.label}: {e}")
             updated_milestones.append(ms)
 
-    return {"milestones": updated_milestones}  # This replaces the list in state
+    # Update goal node with new milestones
+    updated_goal = goal_node.model_copy(update={"milestones": updated_milestones})
+
+    return {"goal_node": updated_goal}
+
+
+async def generate_direct_actions(state: RoadmapState) -> dict[str, Any]:
+    """
+    Generates cross-cutting actions directly under the goal.
+    LLM generates content, Backend assigns UUIDs.
+    """
+    goal_node = state["goal_node"]
+    if not goal_node:
+        return {"goal_node": None}
+
+    context = state["context"]
+    goal_text = context.get("goal", "")
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", DIRECT_ACTIONS_PROMPT),
+            ("human", "Generate direct goal actions."),
+        ]
+    )
+
+    chain = prompt | llm | parse_gemini_output | JsonOutputParser()
+
+    try:
+        result = await chain.ainvoke({"goal": goal_text, "context": str(context)})
+
+        # Parse LLM output as content (no IDs)
+        actions_data = result.get("actions", [])
+        action_contents = [ActionContent(**a) for a in actions_data]
+
+        # Assign UUIDs
+        direct_actions = assign_action_ids(action_contents, goal_node.id)
+
+        # Update goal node with direct actions
+        updated_goal = goal_node.model_copy(update={"actions": direct_actions})
+
+        return {"goal_node": updated_goal}
+    except Exception as e:
+        print(f"Direct actions error: {e}")
+        return {"goal_node": goal_node}
