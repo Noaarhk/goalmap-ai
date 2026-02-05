@@ -1,6 +1,6 @@
 # GoalMap AI Server
 
-FastAPI backend for GoalMap AI, powered by LangGraph agents and PostgreSQL.
+FastAPI backend for GoalMap AI, powered by LangChain pipelines and PostgreSQL.
 
 ## Quick Start
 
@@ -25,7 +25,7 @@ Server runs at http://localhost:8000 (API docs at `/docs`)
 ```
 server/
 ├── app/
-│   ├── agents/           # LangGraph agents
+│   ├── agents/           # LangChain pipelines
 │   │   ├── discovery/    # Goal discovery (analyze_turn → generate_chat)
 │   │   └── roadmap/      # Roadmap gen (skeleton → actions → direct_actions)
 │   ├── api/

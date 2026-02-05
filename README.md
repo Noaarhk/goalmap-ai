@@ -1,6 +1,6 @@
 # GoalMap AI
 
-GoalMap AI is an intelligent application that transforms vague aspirations into actionable roadmaps using AI-powered conversational discovery. Built with LangGraph agents and React Flow visualization.
+GoalMap AI is an intelligent application that transforms vague aspirations into actionable roadmaps using AI-powered conversational discovery. Built with LangChain and React Flow visualization.
 
 ## 🌟 Key Features
 
@@ -22,7 +22,7 @@ GoalMap AI is an intelligent application that transforms vague aspirations into 
 
 ### Backend
 - **Framework**: FastAPI, Python 3.12+
-- **AI Orchestration**: LangGraph, LangChain
+- **AI Orchestration**: LangChain (LCEL pipelines)
 - **LLM**: Google Gemini (via langchain-google-genai)
 - **Database**: PostgreSQL 15, SQLAlchemy 2.0, Alembic
 - **Package Manager**: uv
@@ -136,9 +136,9 @@ goalmap-ai/
 │   ├── stores/             # Zustand state management
 │   └── types/              # TypeScript definitions
 │
-├── server/                 # Backend (FastAPI)
+├── server/                 # Backend (FastAPI) → [Detailed docs](./server/README.md)
 │   ├── app/
-│   │   ├── agents/         # LangGraph agents
+│   │   ├── agents/         # LangChain pipelines
 │   │   │   ├── discovery/  # Conversational goal discovery
 │   │   │   └── roadmap/    # 3-tier roadmap generation
 │   │   ├── api/            # REST API routes
@@ -155,13 +155,13 @@ goalmap-ai/
 
 ## 🤖 Agent Architecture
 
-### Discovery Agent
-Pipeline: `START → analyze_turn → generate_chat → END`
+### Discovery Pipeline
+Flow: `analyze_turn() → generate_chat_stream()`
 - Extracts goals, context, and uncertainties from conversation
-- Maintains conversation state with LangGraph checkpointing
+- Streams responses via SSE
 
-### Roadmap Agent
-Pipeline: `START → plan_skeleton → generate_actions → generate_direct_actions → END`
+### Roadmap Pipeline
+Flow: `plan_skeleton() → generate_actions() → generate_direct_actions()`
 - Generates hierarchical roadmap structure
 - Creates milestone-level and action-level tasks
 
@@ -175,6 +175,10 @@ uv run pytest
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📚 Additional Resources
+
+- [Django Developer's FastAPI + LLM Learning Guide](./docs/LEARNINGS_FROM_DJANGO.md) - Django 개발자가 이 프로젝트를 진행하며 배운 점들
 
 ## 📄 License
 
