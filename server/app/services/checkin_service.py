@@ -1,4 +1,3 @@
-import json
 from uuid import UUID
 
 from app.core.uow import AsyncUnitOfWork
@@ -6,11 +5,12 @@ from app.models.checkin import CheckIn
 from app.models.node import Node
 from app.schemas.api.checkins import NodeUpdate
 from app.services.gemini import get_llm
-from langchain_core.messages import HumanMessage, SystemMessage
+from app.services.langfuse import get_prompt
+from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.prompts import ChatPromptTemplate
 from sqlalchemy import select
 
-
-CHECKIN_ANALYSIS_PROMPT = """You are a progress analyst for a goal-tracking application. 
+FALLBACK_CHECKIN_ANALYSIS_PROMPT = """You are a progress analyst for a goal-tracking application. 
 Analyze the user's check-in update and determine which tasks/milestones were worked on.
 
 You will receive:
@@ -29,18 +29,33 @@ Guidelines:
 - If the user explicitly mentions completing something, you can give higher progress
 
 Return a JSON object with this exact structure:
-{
+{{
     "updates": [
-        {
+        {{
             "node_id": "uuid-string",
             "progress_delta": 15,
             "log_entry": "Completed initial research phase"
-        }
+        }}
     ]
-}
+}}
 
-If no nodes match the check-in, return: {"updates": []}
+If no nodes match the check-in, return: {{"updates": []}}
 """
+
+FALLBACK_CHECKIN_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        ("system", FALLBACK_CHECKIN_ANALYSIS_PROMPT),
+        (
+            "human",
+            """User's check-in: "{user_input}"
+
+Available nodes:
+{node_context}
+
+Analyze and return JSON with updates.""",
+        ),
+    ]
+)
 
 
 async def analyze_checkin(
@@ -68,38 +83,23 @@ async def analyze_checkin(
             ]
         )
 
-        # Call LLM
+        # Fetch prompt from Langfuse or use fallback
+        prompt = get_prompt("checkin-analysis", fallback=FALLBACK_CHECKIN_PROMPT)
         llm = get_llm()
-        messages = [
-            SystemMessage(content=CHECKIN_ANALYSIS_PROMPT),
-            HumanMessage(
-                content=f"""User's check-in: "{user_input}"
 
-Available nodes:
-{node_context}
-
-Analyze and return JSON with updates."""
-            ),
-        ]
-
-        response = await llm.ainvoke(messages)
-        response_text = (
-            response.content
-            if isinstance(response.content, str)
-            else response.content[0].get("text", "{}")
-        )
-
-        # Parse response - handle markdown code blocks
-        json_str = response_text.strip()
-        if json_str.startswith("```"):
-            # Remove markdown code block
-            lines = json_str.split("\n")
-            json_str = "\n".join(lines[1:-1])
+        # Build chain with JSON parser
+        chain = prompt | llm | JsonOutputParser()
+        chain = chain.with_config(tags=["checkin_analysis"])
 
         try:
-            parsed = json.loads(json_str)
-            proposed_updates = parsed.get("updates", [])
-        except json.JSONDecodeError:
+            result = await chain.ainvoke(
+                {
+                    "user_input": user_input,
+                    "node_context": node_context,
+                }
+            )
+            proposed_updates = result.get("updates", [])
+        except Exception:
             proposed_updates = []
 
         # Create CheckIn record

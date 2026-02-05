@@ -37,15 +37,12 @@ if settings.LANGFUSE_PUBLIC_KEY and settings.LANGFUSE_SECRET_KEY:
         pass
 
 
-def get_prompt(name: str, fallback: str) -> ChatPromptTemplate:
+def get_prompt(name: str, fallback: ChatPromptTemplate) -> ChatPromptTemplate:
     """
     Fetch a prompt from Langfuse.
-    If fails or not configured, return a ChatPromptTemplate from the fallback string.
+    If fails or not configured, return the provided fallback ChatPromptTemplate.
     """
     import logging
-
-    from langchain_core.messages import SystemMessage
-    # ChatPromptTemplate import moved to top
 
     logger = logging.getLogger(__name__)
 
@@ -71,15 +68,7 @@ def get_prompt(name: str, fallback: str) -> ChatPromptTemplate:
             else:
                 logger.warning(f"Unexpected prompt type {type(prompt)}, using fallback")
         except Exception as e:
-            # Log error ideally
             logger.warning(f"Failed to fetch prompt '{name}' from Langfuse: {e}")
 
-    # Fallback: Construct a simple ChatPromptTemplate
-    # Assuming the fallback string is a System Prompt
-    logger.info(f"Loaded prompt '{name}' from local fallback constants")
-    return ChatPromptTemplate.from_messages(
-        [
-            SystemMessage(content=fallback),
-            ("human", "Latest: {last_message}\n\nHistory:\n{history}"),
-        ]
-    )
+    logger.info(f"Using local fallback for prompt '{name}'")
+    return fallback
