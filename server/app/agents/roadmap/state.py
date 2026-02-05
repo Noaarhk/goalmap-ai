@@ -1,6 +1,6 @@
 from typing import TypedDict
 
-from app.schemas.roadmap import GoalNode
+from app.schemas.events.roadmap import GoalNode
 
 
 class RoadmapState(TypedDict):

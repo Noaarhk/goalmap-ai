@@ -17,9 +17,10 @@ class GraphManager:
     - Streaming execution
     """
 
-    def __init__(self, graph_factory, graph_name: str):
-        self.graph_factory = graph_factory  # Function that returns compiled graph
+    def __init__(self, graph_factory, graph_name: str, checkpointer_factory=None):
+        self.graph_factory = graph_factory
         self.graph_name = graph_name
+        self.checkpointer_factory = checkpointer_factory or get_postgres_saver
 
     async def stream_events(
         self,
@@ -42,7 +43,7 @@ class GraphManager:
 
         # Context Manage Checkpointer
         try:
-            async with get_postgres_saver() as checkpointer:
+            async with self.checkpointer_factory() as checkpointer:
                 # Compile graph with checkpointer at runtime
                 graph: CompiledStateGraph = self.graph_factory(checkpointer)
 

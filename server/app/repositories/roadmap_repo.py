@@ -1,4 +1,4 @@
-from app.models.node import Node, NodeType
+from app.models.node import Node, NodeStatus, NodeType
 from app.models.roadmap import Roadmap
 from app.repositories.base import BaseRepository
 from sqlalchemy import select
@@ -72,7 +72,7 @@ class RoadmapRepository(BaseRepository[Roadmap]):
             type=NodeType.GOAL,
             label=goal,
             details=title,  # or description if available
-            status="pending",
+            status=NodeStatus.PENDING,
         )
         self.db.add(goal_node)
         await self.db.flush()  # Need ID
@@ -92,38 +92,34 @@ class RoadmapRepository(BaseRepository[Roadmap]):
                     details=a_data.get("details"),
                     order=a_data.get("order", 0),
                     is_assumed=a_data.get("is_assumed", False),
-                    status=a_data.get("status", "pending"),
+                    status=NodeStatus(a_data.get("status", "pending")),
                 )
                 self.db.add(action_node)
                 if i == 0 or i == len(goal_actions_data) - 1:
                     logger.info(f"[Repo] Direct Action added: {a_data.get('label')}")
 
+        # Create all milestone nodes in bulk, then flush once to get IDs
         logger.info(f"[Repo] Processing {len(milestones_data)} milestones")
-        for m_i, m_data in enumerate(milestones_data):
-            # Create Milestone Node (Level 1) - Linked to Goal Node?
-            # Usually Milestones are children of Goal.
-            # In previous logic, they were root nodes (roadmap_id only).
-            # But graph.py output structure is Goal -> Milestones.
-            # So parent_id should be goal_node.id.
-
+        milestone_nodes = []
+        for m_data in milestones_data:
             milestone_node = Node(
                 roadmap_id=roadmap.id,
-                parent_id=goal_node.id,  # Linking to Goal Node
+                parent_id=goal_node.id,
                 type=NodeType.MILESTONE,
                 label=m_data.get("label"),
                 details=m_data.get("details"),
                 order=m_data.get("order", 0),
                 is_assumed=m_data.get("is_assumed", False),
-                status="pending",
+                status=NodeStatus.PENDING,
             )
             self.db.add(milestone_node)
-            await self.db.flush()  # Need ID for actions
-            logger.info(f"[Repo] Milestone {m_i} created: {milestone_node.id}")
+            milestone_nodes.append((milestone_node, m_data))
 
-            # Create Action Nodes (Level 2)
-            actions_data = m_data.get("actions", [])
-            logger.info(f"[Repo] Milestone {m_i} has {len(actions_data)} actions")
-            for a_i, a_data in enumerate(actions_data):
+        await self.db.flush()  # Single flush for all milestones
+
+        # Create all action nodes using the now-available milestone IDs
+        for milestone_node, m_data in milestone_nodes:
+            for a_data in m_data.get("actions", []):
                 action_node = Node(
                     roadmap_id=roadmap.id,
                     parent_id=milestone_node.id,
@@ -132,7 +128,7 @@ class RoadmapRepository(BaseRepository[Roadmap]):
                     details=a_data.get("details"),
                     order=a_data.get("order", 0),
                     is_assumed=a_data.get("is_assumed", False),
-                    status=a_data.get("status", "pending"),
+                    status=NodeStatus(a_data.get("status", "pending")),
                 )
                 self.db.add(action_node)
 
@@ -180,7 +176,7 @@ class RoadmapRepository(BaseRepository[Roadmap]):
             type=NodeType.GOAL,
             label=roadmap.goal,
             details=roadmap.title,
-            status="pending",
+            status=NodeStatus.PENDING,
         )
         self.db.add(goal_node)
         await self.db.flush()
@@ -198,12 +194,12 @@ class RoadmapRepository(BaseRepository[Roadmap]):
                     details=a_data.get("details"),
                     order=a_data.get("order", 0),
                     is_assumed=a_data.get("is_assumed", False),
-                    status=a_data.get("status", "pending"),
+                    status=NodeStatus(a_data.get("status", "pending")),
                 )
                 self.db.add(action_node)
 
+        milestone_nodes = []
         for m_data in milestones_data:
-            # Create Milestone Node
             milestone_node = Node(
                 roadmap_id=roadmap_id,
                 parent_id=goal_node.id,
@@ -212,23 +208,24 @@ class RoadmapRepository(BaseRepository[Roadmap]):
                 details=m_data.get("details"),
                 order=m_data.get("order", 0),
                 is_assumed=m_data.get("is_assumed", False),
-                status=m_data.get("status", "pending"),
+                status=NodeStatus(m_data.get("status", "pending")),
             )
             self.db.add(milestone_node)
-            await self.db.flush()
+            milestone_nodes.append((milestone_node, m_data))
 
-            # Create Action Nodes (renamed from tasks)
-            actions_data = m_data.get("actions", [])  # Changed from "tasks"
-            for a_data in actions_data:
+        await self.db.flush()  # Single flush for all milestones
+
+        for milestone_node, m_data in milestone_nodes:
+            for a_data in m_data.get("actions", []):
                 action_node = Node(
                     roadmap_id=roadmap_id,
                     parent_id=milestone_node.id,
-                    type=NodeType.ACTION,  # Changed from TASK
+                    type=NodeType.ACTION,
                     label=a_data.get("label"),
                     details=a_data.get("details"),
                     order=a_data.get("order", 0),
                     is_assumed=a_data.get("is_assumed", False),
-                    status=a_data.get("status", "pending"),
+                    status=NodeStatus(a_data.get("status", "pending")),
                 )
                 self.db.add(action_node)
 

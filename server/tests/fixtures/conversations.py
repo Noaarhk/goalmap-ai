@@ -3,7 +3,7 @@
 from uuid import uuid4
 
 from app.models.conversation import Conversation
-from app.schemas.discovery import BlueprintData, FieldScores
+from app.schemas.api.chat import BlueprintData, FieldScores
 
 
 def create_conversation(

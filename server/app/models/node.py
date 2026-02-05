@@ -21,6 +21,12 @@ class NodeType(str, Enum):
     TASK = "task"  # Deprecated, use ACTION
 
 
+class NodeStatus(str, Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+
+
 class Node(Base):
     __tablename__ = "nodes"
 
@@ -39,9 +45,10 @@ class Node(Base):
     order: Mapped[int] = mapped_column(default=0)
 
     is_assumed: Mapped[bool] = mapped_column(default=False)
-    status: Mapped[str] = mapped_column(
-        default="pending"
-    )  # pending, in_progress, completed
+    status: Mapped[NodeStatus] = mapped_column(
+        SQLEnum(NodeStatus, values_callable=lambda obj: [e.value for e in obj]),
+        default=NodeStatus.PENDING,
+    )
 
     # Period fields
     start_date: Mapped[date | None] = mapped_column(nullable=True)

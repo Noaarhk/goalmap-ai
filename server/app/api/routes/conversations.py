@@ -3,7 +3,7 @@ from uuid import UUID
 from app.api.dependencies import CurrentUser, get_current_user
 from app.core.database import get_db
 from app.repositories.conversation_repo import ConversationRepository
-from app.schemas.api_schemas import (
+from app.schemas.api.conversations import (
     ConversationCreate,
     ConversationResponse,
     ConversationUpdate,

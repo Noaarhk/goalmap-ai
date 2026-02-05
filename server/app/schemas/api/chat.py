@@ -1,7 +1,5 @@
 from pydantic import BaseModel, Field
 
-# --- Domain Models ---
-
 
 class FieldScores(BaseModel):
     goal: int = 0
@@ -23,42 +21,6 @@ class BlueprintData(BaseModel):
     readiness_tips: list[str] = Field(default_factory=list)
     success_tips: list[str] = Field(default_factory=list)
     uncertainties: list[dict] = Field(default_factory=list)
-
-
-# --- SSE Event Models ---
-
-
-class TokenEventData(BaseModel):
-    text: str
-    run_id: str | None = None
-
-
-class StatusEventData(BaseModel):
-    message: str
-    node: str
-
-
-class BlueprintUpdateEventData(BaseModel):
-    """Partial update for the blueprint"""
-
-    goal: str | None = None
-    why: str | None = None
-    timeline: str | None = None
-    obstacles: str | None = None
-    resources: str | None = None
-    milestones: list[str] | None = None
-    field_scores: dict[str, int] | None = None
-    readiness_tips: list[str] | None = None
-    success_tips: list[str] | None = None
-    uncertainties: list[dict] | None = None
-
-
-class ErrorEventData(BaseModel):
-    code: str
-    message: str
-
-
-# --- API Request Models ---
 
 
 class ChatRequest(BaseModel):

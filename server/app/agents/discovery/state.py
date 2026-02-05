@@ -1,6 +1,6 @@
 from typing import Annotated, Any, TypedDict
 
-from app.schemas.discovery import BlueprintData
+from app.schemas.api.chat import BlueprintData
 from langgraph.graph.message import add_messages
 
 

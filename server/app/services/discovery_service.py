@@ -13,16 +13,13 @@ import uuid
 from typing import AsyncGenerator
 
 from app.agents.discovery.graph import get_graph as get_discovery_graph
-from app.core.database import async_session_factory
+
+# Removed async_session_factory
 from app.core.graph_manager import GraphManager
 from app.repositories.conversation_repo import ConversationRepository
-from app.schemas.discovery import (
-    BlueprintUpdateEventData,
-    ChatRequest,
-    ErrorEventData,
-    StatusEventData,
-    TokenEventData,
-)
+from app.schemas.api.chat import ChatRequest
+from app.schemas.events.base import ErrorEventData, StatusEventData, TokenEventData
+from app.schemas.events.discovery import BlueprintUpdateEventData
 from app.services.langfuse import get_langfuse_handler
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -35,9 +32,14 @@ discovery_manager = GraphManager(get_discovery_graph, "discovery")
 class DiscoveryStreamService:
     """Service for streaming Discovery Agent responses."""
 
-    @staticmethod
+    def __init__(self, repo: ConversationRepository, graph_manager: GraphManager):
+        self.repo = repo
+        self.graph_manager = graph_manager
+
     async def stream_chat(
-        request: ChatRequest, user_id: str | None = None
+        self,
+        request: ChatRequest,
+        user_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         Execute discovery graph and yield SSE events.
@@ -91,21 +93,19 @@ class DiscoveryStreamService:
 
             # Persist user message
             if user_id and request.chat_id:
-                await DiscoveryStreamService._persist_user_message(
-                    request.chat_id, request.message
-                )
+                await self._persist_user_message(request.chat_id, request.message)
 
             # Accumulator for full assistant response
             full_assistant_response = ""
 
-            async for event in discovery_manager.stream_events(
+            async for event in self.graph_manager.stream_events(
                 initial_state, thread_id, callbacks=callbacks
             ):
                 event_type = event["event"]
 
                 # --- Stream Tokens ---
                 if event_type == "on_chat_model_stream":
-                    result = await DiscoveryStreamService._handle_token_stream(
+                    result = await self._handle_token_stream(
                         event,
                         stream_buffer,
                         is_streaming_response,
@@ -121,13 +121,13 @@ class DiscoveryStreamService:
 
                 # --- Stream Status ---
                 elif event_type == "on_chain_start":
-                    sse_event = DiscoveryStreamService._handle_chain_start(event)
+                    sse_event = self._handle_chain_start(event)
                     if sse_event:
                         yield sse_event
 
                 # --- Stream Updates ---
                 elif event_type == "on_chain_end":
-                    sse_event = await DiscoveryStreamService._handle_chain_end(
+                    sse_event = await self._handle_chain_end(
                         event, user_id, request.chat_id
                     )
                     if sse_event:
@@ -135,7 +135,7 @@ class DiscoveryStreamService:
 
             # Persist assistant message at end
             if user_id and request.chat_id and full_assistant_response:
-                await DiscoveryStreamService._persist_assistant_message(
+                await self._persist_assistant_message(
                     request.chat_id, full_assistant_response
                 )
 
@@ -147,27 +147,23 @@ class DiscoveryStreamService:
             )
             yield f"event: error\ndata: {error_data.model_dump_json()}\n\n"
 
-    @staticmethod
-    async def _persist_user_message(chat_id: str, message: str) -> None:
+    async def _persist_user_message(self, chat_id: str, message: str) -> None:
         """Persist user message to database."""
         try:
             chat_uuid = uuid.UUID(chat_id)
-            async with async_session_factory() as session:
-                repo = ConversationRepository(session)
-                await repo.append_message(chat_uuid, role="user", content=message)
+            # Use injected repository
+            await self.repo.append_message(chat_uuid, role="user", content=message)
         except ValueError:
             logger.warning(f"Invalid chat_id format: {chat_id}")
         except Exception as e:
             logger.error(f"Failed to persist user message: {e}")
 
-    @staticmethod
-    async def _persist_assistant_message(chat_id: str, message: str) -> None:
+    async def _persist_assistant_message(self, chat_id: str, message: str) -> None:
         """Persist assistant message to database."""
         try:
             chat_uuid = uuid.UUID(chat_id)
-            async with async_session_factory() as session:
-                repo = ConversationRepository(session)
-                await repo.append_message(chat_uuid, role="assistant", content=message)
+            # Use injected repository
+            await self.repo.append_message(chat_uuid, role="assistant", content=message)
         except ValueError:
             pass  # Already logged warning above
         except Exception as e:
@@ -227,8 +223,8 @@ class DiscoveryStreamService:
 
         return None
 
-    @staticmethod
     def _parse_response(
+        self,
         content: str,
         stream_buffer: str,
         is_streaming_response: bool,
@@ -286,8 +282,7 @@ class DiscoveryStreamService:
 
         return ("", stream_buffer, is_streaming_response, None)
 
-    @staticmethod
-    def _handle_chain_start(event: dict) -> str | None:
+    def _handle_chain_start(self, event: dict) -> str | None:
         """Handle chain start events for status updates."""
         node_name = event["name"]
         if node_name in [
@@ -305,9 +300,8 @@ class DiscoveryStreamService:
             return f"event: status\ndata: {status_data.model_dump_json()}\n\n"
         return None
 
-    @staticmethod
     async def _handle_chain_end(
-        event: dict, user_id: str | None, chat_id: str | None
+        self, event: dict, user_id: str | None, chat_id: str | None
     ) -> str | None:
         """Handle chain end events for blueprint updates."""
         output = event["data"].get("output")
@@ -328,9 +322,8 @@ class DiscoveryStreamService:
         # Persist blueprint update
         if user_id and chat_id:
             try:
-                async with async_session_factory() as session:
-                    repo = ConversationRepository(session)
-                    await repo.update_blueprint(chat_id, bp_dict)
+                chat_uuid = uuid.UUID(chat_id)
+                await self.repo.update_blueprint(chat_uuid, bp_dict)
             except Exception as e:
                 logger.error(f"Failed to persist blueprint: {e}")
 

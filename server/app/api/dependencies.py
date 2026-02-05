@@ -1,10 +1,19 @@
 import logging
+from typing import TYPE_CHECKING
 
 import jwt
 from app.core.config import settings
+from app.core.database import get_db
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWKClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from app.repositories.conversation_repo import ConversationRepository
+    from app.repositories.roadmap_repo import RoadmapRepository
+    from app.services.discovery_service import DiscoveryStreamService
+    from app.services.roadmap_service import RoadmapStreamService
 
 logger = logging.getLogger(__name__)
 
@@ -112,8 +121,8 @@ async def get_optional_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> CurrentUser | None:
     """
-    Optionally validates the JWT. Returns None if no token provided.
-    Useful for endpoints that work with or without authentication.
+    Returns the current user if authenticated, else None.
+    Does not raise exceptions for missing or invalid tokens.
     """
     if not credentials:
         return None
@@ -122,3 +131,41 @@ async def get_optional_user(
         return await get_current_user(credentials)
     except HTTPException:
         return None
+
+
+# --- Repository Providers ---
+
+
+async def get_conversation_repo(
+    session: AsyncSession = Depends(get_db),
+) -> "ConversationRepository":
+    from app.repositories.conversation_repo import ConversationRepository
+
+    return ConversationRepository(session)
+
+
+async def get_roadmap_repo(
+    session: AsyncSession = Depends(get_db),
+) -> "RoadmapRepository":
+    from app.repositories.roadmap_repo import RoadmapRepository
+
+    return RoadmapRepository(session)
+
+
+# --- Service Providers ---
+
+
+def get_discovery_service(
+    repo: "ConversationRepository" = Depends(get_conversation_repo),
+) -> "DiscoveryStreamService":
+    from app.services.discovery_service import DiscoveryStreamService, discovery_manager
+
+    return DiscoveryStreamService(repo, discovery_manager)
+
+
+def get_roadmap_service(
+    repo: "RoadmapRepository" = Depends(get_roadmap_repo),
+) -> "RoadmapStreamService":
+    from app.services.roadmap_service import RoadmapStreamService, roadmap_manager
+
+    return RoadmapStreamService(repo, roadmap_manager)

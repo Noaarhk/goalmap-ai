@@ -2,7 +2,8 @@
 
 from uuid import uuid4
 
-from app.schemas.roadmap import ActionNode, GenerateRoadmapRequest, GoalNode, Milestone
+from app.schemas.api.roadmaps import GenerateRoadmapRequest
+from app.schemas.events.roadmap import ActionNode, GoalNode, Milestone
 
 
 def create_roadmap_request(

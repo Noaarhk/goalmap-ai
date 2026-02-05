@@ -1,14 +1,23 @@
 from uuid import UUID
 
-from app.api.dependencies import CurrentUser, get_current_user
-from app.core.database import get_db
+from app.api.dependencies import (
+    CurrentUser,
+    get_current_user,
+    get_roadmap_repo,
+    get_roadmap_service,
+)
+
+# Removed get_db and AsyncSession imports
 from app.repositories.roadmap_repo import RoadmapRepository
-from app.schemas.api_schemas import RoadmapCreate, RoadmapResponse, RoadmapUpdate
-from app.schemas.roadmap import GenerateRoadmapRequest
+from app.schemas.api.roadmaps import (
+    GenerateRoadmapRequest,
+    RoadmapCreate,
+    RoadmapResponse,
+    RoadmapUpdate,
+)
 from app.services.roadmap_service import RoadmapStreamService
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 
@@ -17,9 +26,8 @@ router = APIRouter()
 async def create_roadmap(
     payload: RoadmapCreate,
     user: CurrentUser = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    repo: RoadmapRepository = Depends(get_roadmap_repo),
 ):
-    repo = RoadmapRepository(db)
     roadmap = await repo.create_with_nodes(
         user_id=user.user_id,
         title=payload.title,
@@ -33,11 +41,10 @@ async def create_roadmap(
 @router.get("/", response_model=list[RoadmapResponse])
 async def get_roadmaps(
     user: CurrentUser = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    repo: RoadmapRepository = Depends(get_roadmap_repo),
     skip: int = 0,
     limit: int = 100,
 ):
-    repo = RoadmapRepository(db)
     return await repo.get_by_user_id(user.user_id)
 
 
@@ -45,9 +52,8 @@ async def get_roadmaps(
 async def get_roadmap(
     roadmap_id: UUID,
     user: CurrentUser = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    repo: RoadmapRepository = Depends(get_roadmap_repo),
 ):
-    repo = RoadmapRepository(db)
     roadmap = await repo.get(roadmap_id)
     if not roadmap:
         raise HTTPException(status_code=404, detail="Roadmap not found")
@@ -61,9 +67,8 @@ async def update_roadmap(
     roadmap_id: UUID,
     payload: RoadmapUpdate,
     user: CurrentUser = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    repo: RoadmapRepository = Depends(get_roadmap_repo),
 ):
-    repo = RoadmapRepository(db)
     roadmap = await repo.get(roadmap_id)
     if not roadmap:
         raise HTTPException(status_code=404, detail="Roadmap not found")
@@ -91,9 +96,8 @@ async def update_roadmap(
 async def delete_roadmap(
     roadmap_id: UUID,
     user: CurrentUser = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    repo: RoadmapRepository = Depends(get_roadmap_repo),
 ):
-    repo = RoadmapRepository(db)
     roadmap = await repo.get(roadmap_id)
     if not roadmap:
         raise HTTPException(status_code=404, detail="Roadmap not found")
@@ -107,6 +111,7 @@ async def delete_roadmap(
 async def stream_roadmap(
     request: GenerateRoadmapRequest,
     user: CurrentUser = Depends(get_current_user),
+    service: RoadmapStreamService = Depends(get_roadmap_service),
 ):
     """
     Stream Roadmap generation via SSE.
@@ -115,6 +120,6 @@ async def stream_roadmap(
     """
     user_id = user.user_id if user else None
     return StreamingResponse(
-        RoadmapStreamService.stream_roadmap(request, user_id),
+        service.stream_roadmap(request, user_id),
         media_type="text/event-stream",
     )

@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 from app.agents.roadmap.prompts import (
@@ -6,14 +7,9 @@ from app.agents.roadmap.prompts import (
     STRATEGIC_PLANNER_PROMPT,
 )
 from app.agents.roadmap.state import RoadmapState
-from app.schemas.roadmap import (
-    ActionContent,
-    GoalContent,
-    MilestoneContent,
-    assign_action_ids,
-    assign_goal_ids,
-)
+from app.schemas.llm.roadmap import ActionContent, GoalContent, MilestoneContent
 from app.services.gemini import get_llm, parse_gemini_output
+from app.utils.roadmap import assign_action_ids, assign_goal_ids
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -80,9 +76,7 @@ async def generate_actions(state: RoadmapState) -> dict[str, Any]:
 
     chain = prompt | llm | parse_gemini_output | JsonOutputParser()
 
-    updated_milestones = []
-
-    for ms in goal_node.milestones:
+    async def _generate_for_milestone(ms):
         try:
             result = await chain.ainvoke(
                 {
@@ -91,24 +85,20 @@ async def generate_actions(state: RoadmapState) -> dict[str, Any]:
                     "milestone_details": ms.details or "",
                 }
             )
-
-            # Parse LLM output as content (no IDs)
             actions_data = result.get("actions", [])
             action_contents = [ActionContent(**a) for a in actions_data]
-
-            # Assign UUIDs
             actions = assign_action_ids(action_contents, ms.id)
-
-            # Update milestone with actions
-            updated_ms = ms.model_copy(update={"actions": actions})
-            updated_milestones.append(updated_ms)
-
+            return ms.model_copy(update={"actions": actions})
         except Exception as e:
             print(f"Action gen error for {ms.label}: {e}")
-            updated_milestones.append(ms)
+            return ms
 
-    # Update goal node with new milestones
-    updated_goal = goal_node.model_copy(update={"milestones": updated_milestones})
+    # Run all milestone action generations in parallel
+    updated_milestones = await asyncio.gather(
+        *[_generate_for_milestone(ms) for ms in goal_node.milestones]
+    )
+
+    updated_goal = goal_node.model_copy(update={"milestones": list(updated_milestones)})
 
     return {"goal_node": updated_goal}
 

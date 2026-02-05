@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 from app.agents.discovery.nodes import analyze_turn
 from app.agents.discovery.state import DiscoveryState
-from app.schemas.discovery import BlueprintData, FieldScores
+from app.schemas.api.chat import BlueprintData, FieldScores
 from langchain_core.messages import HumanMessage
 
 

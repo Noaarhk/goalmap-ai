@@ -1,11 +1,12 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
 from app.models.conversation import Conversation
 from app.models.node import NodeType
 from app.models.roadmap import Roadmap
-from app.schemas.roadmap import ActionNode, GenerateRoadmapRequest, GoalNode, Milestone
+from app.schemas.api.roadmaps import GenerateRoadmapRequest
+from app.schemas.events.roadmap import ActionNode, GoalNode, Milestone
 from app.services.roadmap_service import RoadmapStreamService
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -56,18 +57,16 @@ async def test_roadmap_service_persistence(db_session):
         actions=[],
     )
 
-    # 3. Call Service Persistence (Patching Session)
-    # Mock context manager for session
-    mock_session_ctx = MagicMock()
-    mock_session_ctx.__aenter__.return_value = db_session
-    mock_session_ctx.__aexit__.return_value = None
+    # 3. Call Service Persistence (DI)
+    from app.repositories.roadmap_repo import RoadmapRepository
 
-    # Patch the factory to return our mock context manager
-    with patch(
-        "app.services.roadmap_service.async_session_factory",
-        return_value=mock_session_ctx,
-    ):
-        await RoadmapStreamService._persist_roadmap(request, goal_node, user_id)
+    # Create Service with injected dependencies
+    repo = RoadmapRepository(db_session)
+    # We can mock the graph manager as it's not used in _persist_roadmap
+    mock_graph_manager = MagicMock()
+    service = RoadmapStreamService(repo, mock_graph_manager)
+
+    await service._persist_roadmap(request, goal_node, user_id)
 
     # 4. Verify in DB
 

@@ -1,7 +1,9 @@
+from enum import Enum
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 from app.models.base import Base
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -9,6 +11,13 @@ if TYPE_CHECKING:
     from app.models.checkin import CheckIn
     from app.models.conversation import Conversation
     from app.models.node import Node
+
+
+class RoadmapStatus(str, Enum):
+    DRAFT = "draft"
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    ARCHIVED = "archived"
 
 
 class Roadmap(Base):
@@ -21,9 +30,10 @@ class Roadmap(Base):
 
     title: Mapped[str] = mapped_column()
     goal: Mapped[str] = mapped_column()
-    status: Mapped[str] = mapped_column(
-        default="draft"
-    )  # draft, active, completed, archived
+    status: Mapped[RoadmapStatus] = mapped_column(
+        SQLEnum(RoadmapStatus, values_callable=lambda obj: [e.value for e in obj]),
+        default=RoadmapStatus.DRAFT,
+    )
 
     # Relationships
     conversation: Mapped["Conversation"] = relationship(back_populates="roadmap")
