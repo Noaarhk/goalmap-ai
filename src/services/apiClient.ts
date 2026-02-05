@@ -7,7 +7,7 @@ export interface ChatResponseEvent {
 }
 
 export interface RoadmapResponseEvent {
-	type: "roadmap_milestones" | "roadmap_tasks" | "error";
+	type: "roadmap_skeleton" | "roadmap_actions" | "roadmap_direct_actions" | "error";
 	data: any;
 }
 
@@ -134,16 +134,18 @@ export const apiClient = {
 
 	streamRoadmap: async (
 		blueprint: BlueprintData,
+		chatId: string,
 		onEvent: EventHandler<RoadmapResponseEvent>,
 	) => {
 		await streamRequest(
-			`${API_BASE}/v1/roadmap/stream`,
+			`${API_BASE}/v1/roadmaps/stream`,
 			{
 				goal: blueprint.goal,
 				why: blueprint.why,
 				timeline: blueprint.timeline,
 				obstacles: blueprint.obstacles,
 				resources: blueprint.resources,
+				conversation_id: chatId,
 			},
 			onEvent,
 		);
@@ -173,6 +175,13 @@ export const apiClient = {
         });
     },
 
+    updateConversation: async (id: string, updates: { title?: string }) => {
+        return fetchJSON<any>(`${API_BASE}/v1/conversations/${id}/`, {
+            method: "PUT",
+            body: JSON.stringify(updates),
+        });
+    },
+
     // Roadmaps
     getRoadmaps: async () => {
         return fetchJSON<any[]>(`${API_BASE}/v1/roadmaps/`);
@@ -182,5 +191,25 @@ export const apiClient = {
         return fetchJSON<void>(`${API_BASE}/v1/roadmaps/${id}/`, {
             method: "DELETE",
         });
+    },
+
+    // Consult
+    consultNode: async (nodeContext: {
+        id: string;
+        label: string;
+        type: string;
+        details?: string[];
+    }, question: string): Promise<string> => {
+        const response = await fetchJSON<{ advice: string }>(`${API_BASE}/v1/consult`, {
+            method: "POST",
+            body: JSON.stringify({
+                node_id: nodeContext.id,
+                node_label: nodeContext.label,
+                node_type: nodeContext.type,
+                node_details: nodeContext.details || [],
+                question,
+            }),
+        });
+        return response.advice;
     },
 };

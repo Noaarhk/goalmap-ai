@@ -25,15 +25,28 @@ export const useBlueprintStore = create<BlueprintStore>((set) => ({
         set((state) => {
             const newBlueprint = { ...state.blueprint };
 
+            // Convert snake_case keys to camelCase (API sends snake_case)
+            const rawData = data as any;
+            const normalizedData: Partial<BlueprintData> = {
+                ...data,
+                fieldScores: rawData.field_scores || data.fieldScores,
+                readinessTips: rawData.readiness_tips || data.readinessTips,
+                successTips: rawData.success_tips || data.successTips,
+            };
+            // Remove snake_case keys after conversion
+            delete (normalizedData as any).field_scores;
+            delete (normalizedData as any).readiness_tips;
+            delete (normalizedData as any).success_tips;
+
             // Merge top-level fields (only if not null/undefined)
-            for (const key in data) {
-                if (key !== 'fieldScores' && data[key as keyof BlueprintData] !== null && data[key as keyof BlueprintData] !== undefined) {
-                    (newBlueprint as any)[key] = data[key as keyof BlueprintData];
+            for (const key in normalizedData) {
+                if (key !== 'fieldScores' && normalizedData[key as keyof BlueprintData] !== null && normalizedData[key as keyof BlueprintData] !== undefined) {
+                    (newBlueprint as any)[key] = normalizedData[key as keyof BlueprintData];
                 }
             }
 
             // Deep merge fieldScores specifically
-            if (data.fieldScores) {
+            if (normalizedData.fieldScores) {
                 newBlueprint.fieldScores = {
                     ...(newBlueprint.fieldScores || {
                         goal: 0,
@@ -44,7 +57,7 @@ export const useBlueprintStore = create<BlueprintStore>((set) => ({
                         resources: 0,
                     }),
                     ...Object.fromEntries(
-                        Object.entries(data.fieldScores).filter(
+                        Object.entries(normalizedData.fieldScores).filter(
                             ([_, v]) => v !== null && v !== undefined,
                         ),
                     ),

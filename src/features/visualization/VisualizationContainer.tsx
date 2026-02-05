@@ -15,7 +15,7 @@ import ReactFlow, {
 	Panel,
 	ReactFlowProvider,
 } from "reactflow";
-import { consultNode } from "../../services/gemini";
+import "reactflow/dist/style.css";
 import { useAppStore, useAuthStore, useRoadmapStore } from "../../stores";
 import { AppState } from "../../types";
 
@@ -45,15 +45,14 @@ export function VisualizationContainer() {
 	const handleNodeChat = async () => {
 		if (!selectedNodeId || !nodeChatInput.trim()) return;
 
-		// Find the full node object since consultNode needs details
 		const targetNode = roadmap?.nodes.find((n) => n.id === selectedNodeId);
 		if (!targetNode) return;
 
 		setIsNodeChatting(true);
 		try {
-			const response = await consultNode(targetNode, nodeChatInput);
-			setNodeChatResponse(response);
-			setNodeChatInput(""); // Clear input
+			// TODO: Implement backend consult API
+			setNodeChatResponse("Consult API not yet implemented.");
+			setNodeChatInput("");
 		} catch (e) {
 			console.error(e);
 			setNodeChatResponse("Tactical comms disrupted. Is the frequency clear?");
@@ -179,7 +178,7 @@ export function VisualizationContainer() {
 							</div>
 						</div>
 
-						<div className="flex-1 overflow-y-auto p-8 space-y-8">
+						<div className="flex-1 overflow-y-auto p-8 space-y-6">
 							{selectedNode.is_assumed && (
 								<div className="bg-purple-900/20 border border-purple-500/30 rounded-2xl p-4 flex gap-3">
 									<Info className="w-5 h-5 text-purple-400 shrink-0 mt-0.5" />
@@ -190,31 +189,130 @@ export function VisualizationContainer() {
 								</div>
 							)}
 
-							<div className="space-y-4">
-								<h4 className="font-black text-[10px] text-slate-500 uppercase tracking-widest flex items-center gap-2">
-									<div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]"></div>{" "}
-									Action Items
+							{/* Planning & Progress Section */}
+							<div className="space-y-4 p-4 bg-slate-900/30 rounded-xl border border-slate-800">
+								<h4 className="font-black text-[10px] text-slate-500 uppercase tracking-widest">
+									Planning & Progress
 								</h4>
-								<ul className="space-y-3">
-									{selectedNode.details.map((detail, i) => (
-										<li
-											key={`${i}-${detail}`}
-											className="flex gap-3 text-sm text-slate-300 p-3 rounded-xl bg-slate-900/50 border border-slate-800/50 group hover:border-blue-500/30 transition-colors"
-										>
-											<input
-												type="checkbox"
-												className="mt-1 rounded border-slate-700 bg-slate-800 text-blue-600 focus:ring-blue-500/20"
-											/>
-											<span className="leading-relaxed">{detail}</span>
-										</li>
-									))}
-								</ul>
+
+								{/* Date Range */}
+								<div className="grid grid-cols-2 gap-3">
+									<div className="space-y-1">
+										<span className="text-[9px] font-bold text-slate-600 uppercase">
+											Start
+										</span>
+										<p className="text-xs text-slate-300">
+											{selectedNode.startDate || "Not set"}
+										</p>
+									</div>
+									<div className="space-y-1">
+										<span className="text-[9px] font-bold text-slate-600 uppercase">
+											End
+										</span>
+										<p className="text-xs text-slate-300">
+											{selectedNode.endDate || "Not set"}
+										</p>
+									</div>
+								</div>
+
+								{/* Progress Bar */}
+								<div className="space-y-2">
+									<div className="flex justify-between">
+										<span className="text-[9px] font-bold text-slate-600 uppercase">
+											Progress
+										</span>
+										<span className="text-xs font-bold text-blue-400">
+											{selectedNode.progress || 0}%
+										</span>
+									</div>
+									<div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+										<div
+											className="h-full bg-gradient-to-r from-blue-600 to-blue-400 rounded-full transition-all"
+											style={{ width: `${selectedNode.progress || 0}%` }}
+										/>
+									</div>
+								</div>
+
+								{/* Success Criteria */}
+								{selectedNode.completionCriteria && (
+									<div className="space-y-1">
+										<span className="text-[9px] font-bold text-slate-600 uppercase">
+											Success Criteria
+										</span>
+										<p className="text-xs text-emerald-300 italic">
+											{selectedNode.completionCriteria}
+										</p>
+									</div>
+								)}
 							</div>
+
+							{/* Child Nodes Section */}
+							{(selectedNode.type === "goal" ||
+								selectedNode.type === "milestone") && (
+								<div className="space-y-4">
+									<h4 className="font-black text-[10px] text-slate-500 uppercase tracking-widest flex items-center gap-2">
+										<div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+										{selectedNode.type === "goal"
+											? "Milestones & Actions"
+											: "Actions"}
+									</h4>
+									<ul className="space-y-2">
+										{roadmap?.nodes
+											.filter((n) => n.parentId === selectedNode.id)
+											.map((child) => (
+												<li
+													key={child.id}
+													className="flex items-center gap-3 text-sm text-slate-300 p-3 rounded-xl bg-slate-900/50 border border-slate-800/50 hover:border-emerald-500/30 transition-colors cursor-pointer"
+												>
+													<button
+														type="button"
+														className="flex items-center gap-3 w-full text-left"
+														onClick={() => setSelectedNodeId(child.id)}
+													>
+														<div
+															className={`w-2 h-2 rounded-full ${child.type === "milestone" ? "bg-blue-500" : "bg-emerald-500"}`}
+														/>
+														<span className="flex-1">{child.label}</span>
+														<span className="text-[10px] text-slate-500">
+															{child.progress || 0}%
+														</span>
+													</button>
+												</li>
+											))}
+										{!roadmap?.nodes.some(
+											(n) => n.parentId === selectedNode.id,
+										) && (
+											<p className="text-xs text-slate-600 italic text-center py-2">
+												No child nodes
+											</p>
+										)}
+									</ul>
+								</div>
+							)}
+
+							{/* Details Section */}
+							{selectedNode.details.length > 0 && (
+								<div className="space-y-4">
+									<h4 className="font-black text-[10px] text-slate-500 uppercase tracking-widest flex items-center gap-2">
+										<div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
+										Details
+									</h4>
+									<ul className="space-y-2">
+										{selectedNode.details.map((detail, i) => (
+											<li
+												key={`${i}-${detail}`}
+												className="flex gap-3 text-sm text-slate-300 p-3 rounded-xl bg-slate-900/50 border border-slate-800/50"
+											>
+												<span className="leading-relaxed">{detail}</span>
+											</li>
+										))}
+									</ul>
+								</div>
+							)}
 						</div>
 
 						<div className="bg-[#101722] border-t border-slate-800 flex flex-col h-64">
 							<div className="flex-1 overflow-y-auto p-4 space-y-3">
-								{/* Chat History Placeholder - For now, just ephemeral chat */}
 								<div className="flex gap-3">
 									<div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
 										<Swords className="w-4 h-4 text-white" />

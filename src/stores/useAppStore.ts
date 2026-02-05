@@ -1,4 +1,5 @@
-import { create } from "zustand/react";
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import { AppState, type TemplateType } from "../types";
 
 interface AppStore {
@@ -10,10 +11,18 @@ interface AppStore {
     setTemplate: (type: TemplateType) => void;
 }
 
-export const useAppStore = create<AppStore>((set) => ({
-    appState: AppState.DISCOVERY,
-    template: "quest",
+export const useAppStore = create<AppStore>()(
+    persist(
+        (set) => ({
+            appState: AppState.DISCOVERY,
+            template: "quest",
 
-    setAppState: (appState) => set({ appState }),
-    setTemplate: (template) => set({ template }),
-}));
+            setAppState: (appState) => set({ appState }),
+            setTemplate: (template) => set({ template }),
+        }),
+        {
+            name: "app-storage",
+            partialize: (state) => ({ appState: state.appState }), // Only persist appState
+        }
+    )
+);

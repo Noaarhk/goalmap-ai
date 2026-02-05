@@ -3,8 +3,16 @@ export interface RoadmapNode {
     label: string;
     details: string[];
     is_assumed: boolean;
-    type: "milestone" | "step" | "task";
+    type: "goal" | "milestone" | "action";
+    status?: "pending" | "in_progress" | "completed";
+    order?: number;
     position?: { x: number; y: number };
+    // Enhanced fields
+    progress?: number;
+    startDate?: string;
+    endDate?: string;
+    completionCriteria?: string;
+    parentId?: string;
 }
 
 export interface RoadmapEdge {
@@ -21,4 +29,17 @@ export interface RoadmapData {
     summary: string;
     nodes: RoadmapNode[];
     edges: RoadmapEdge[];
+}
+
+// Streaming state for TransitionView
+export interface StreamingMilestone {
+    id: string;
+    label: string;
+    status: "pending" | "generating" | "done";
+}
+
+export interface StreamingAction {
+    milestoneId: string;
+    id: string;
+    label: string;
 }

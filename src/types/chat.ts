@@ -6,3 +6,11 @@ export interface Message {
     content: string;
     timestamp: number;
 }
+
+export interface Conversation {
+    id: string;
+    title: string | null;
+    messages: Message[];
+    createdAt: number;
+    updatedAt: number;
+}
