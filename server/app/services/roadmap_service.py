@@ -1,229 +1,262 @@
 """
-Roadmap Streaming Service
+Roadmap Streaming Service (Simplified - No Graph)
 
-Handles the business logic for Roadmap Agent streaming:
-- Graph execution with LangGraph
-- SSE event generation (3-tier: Goal → Milestones → Actions)
-- Roadmap persistence
-- Langfuse callback integration
+Supports 2-step generation flow with HIL:
+1. stream_skeleton() - Generates milestone structure for review
+2. stream_actions() - Generates actions (original or modified milestones)
 """
 
 import logging
+import uuid as uuid_lib
 from typing import AsyncGenerator
 from uuid import UUID
 
-from app.agents.roadmap.graph import get_graph as get_roadmap_graph
-
-# Removed async_session_factory as it's no longer needed in service
-from app.core.graph_manager import GraphManager
+from app.agents.roadmap.pipeline import generate_actions, generate_skeleton
 from app.core.uow import AsyncUnitOfWork
-from app.schemas.api.roadmaps import GenerateRoadmapRequest
+from app.schemas.api.roadmaps import GenerateRoadmapRequest, ModifiedMilestone
 from app.schemas.events.base import ErrorEventData
 from app.schemas.events.roadmap import (
+    GoalNode,
+    Milestone,
     RoadmapActionsEvent,
     RoadmapCompleteEvent,
-    RoadmapDirectActionsEvent,
     RoadmapSkeletonEvent,
 )
-from app.services.langfuse import get_langfuse_handler
 
 logger = logging.getLogger(__name__)
 
-# Initialize Roadmap Graph Manager
-roadmap_manager = GraphManager(get_roadmap_graph, "roadmap")
-
 
 class RoadmapStreamService:
-    """Service for streaming Roadmap Agent responses."""
+    """Service for streaming Roadmap generation with HIL support."""
 
-    def __init__(self, uow: AsyncUnitOfWork, graph_manager: GraphManager):
+    def __init__(self, uow: AsyncUnitOfWork):
         self.uow = uow
-        self.graph_manager = graph_manager
+        self._skeleton_cache: dict[str, GoalNode] = {}  # thread_id -> skeleton
+
+    def _get_thread_id(self, user_id: str, goal: str) -> str:
+        """Generate consistent thread ID for caching."""
+        return f"roadmap_{user_id}_{goal[:20].replace(' ', '_')}"
+
+    async def stream_skeleton(
+        self,
+        request: GenerateRoadmapRequest,
+        user_id: str,
+    ) -> AsyncGenerator[str, None]:
+        """
+        Step 1: Generate roadmap skeleton (milestones only).
+        
+        Returns skeleton for user review. Caches for resumption.
+        """
+        logger.info(f"[Skeleton] Starting for goal='{request.goal}'")
+
+        context = {
+            "goal": request.goal,
+            "why": request.why,
+            "timeline": request.timeline,
+            "obstacles": request.obstacles,
+            "resources": request.resources,
+        }
+
+        thread_id = self._get_thread_id(user_id, request.goal)
+
+        try:
+            # Generate skeleton
+            goal_node = await generate_skeleton(context)
+
+            if goal_node:
+                # Cache for later resumption
+                self._skeleton_cache[thread_id] = goal_node
+
+                goal_dict = self._to_dict(goal_node)
+                # Clear actions for skeleton view
+                for ms in goal_dict.get("milestones", []):
+                    ms["actions"] = []
+                goal_dict["actions"] = []
+
+                evt = RoadmapSkeletonEvent(
+                    goal=goal_dict,
+                    thread_id=thread_id,
+                )
+                yield f"event: roadmap_skeleton\ndata: {evt.model_dump_json()}\n\n"
+
+            logger.info(f"[Skeleton] Completed, thread_id={thread_id}")
+
+        except Exception as e:
+            logger.error(f"[Skeleton] Error: {e}", exc_info=True)
+            error_data = ErrorEventData(code="internal_error", message=str(e))
+            yield f"event: error\ndata: {error_data.model_dump_json()}\n\n"
+
+    async def stream_actions(
+        self,
+        thread_id: str,
+        user_id: str,
+        request: GenerateRoadmapRequest | None = None,
+        modified_milestones: list[ModifiedMilestone] | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """
+        Step 2: Generate all actions.
+        
+        If modified_milestones provided, uses user's edits.
+        Otherwise, uses cached skeleton.
+        """
+        logger.info(f"[Actions] Starting, thread_id={thread_id}, modified={modified_milestones is not None}")
+
+        context = {
+            "goal": request.goal if request else "",
+            "why": request.why if request else "",
+            "timeline": request.timeline if request else None,
+            "obstacles": request.obstacles if request else None,
+            "resources": request.resources if request else None,
+        }
+
+        try:
+            # Get or build goal_node
+            if modified_milestones:
+                goal_node = self._build_from_modified(modified_milestones, request)
+            else:
+                goal_node = self._skeleton_cache.get(thread_id)
+                if not goal_node:
+                    error_data = ErrorEventData(
+                        code="not_found",
+                        message="Skeleton not found. Please regenerate.",
+                    )
+                    yield f"event: error\ndata: {error_data.model_dump_json()}\n\n"
+                    return
+
+            # Generate actions
+            final_goal_node = await generate_actions(goal_node, context)
+
+            if final_goal_node:
+                # Yield actions for each milestone
+                async for sse in self._yield_actions(final_goal_node):
+                    yield sse
+
+                # Persist and complete
+                roadmap_id = None
+                if user_id and request:
+                    roadmap_id = await self._persist_roadmap(
+                        request, final_goal_node, user_id
+                    )
+
+                if roadmap_id:
+                    complete_evt = RoadmapCompleteEvent(roadmap_id=str(roadmap_id))
+                    yield f"event: roadmap_complete\ndata: {complete_evt.model_dump_json()}\n\n"
+
+            # Clean up cache
+            if thread_id in self._skeleton_cache:
+                del self._skeleton_cache[thread_id]
+
+            logger.info("[Actions] Completed")
+
+        except Exception as e:
+            logger.error(f"[Actions] Error: {e}", exc_info=True)
+            error_data = ErrorEventData(code="internal_error", message=str(e))
+            yield f"event: error\ndata: {error_data.model_dump_json()}\n\n"
+
+    def _build_from_modified(
+        self,
+        modified_milestones: list[ModifiedMilestone],
+        request: GenerateRoadmapRequest | None,
+    ) -> GoalNode:
+        """Build GoalNode from user-modified milestones."""
+        goal_id = str(uuid_lib.uuid4())
+
+        milestones = []
+        for ms in modified_milestones:
+            milestone = Milestone(
+                id=ms.id if not ms.is_new else str(uuid_lib.uuid4()),
+                label=ms.label,
+                details=ms.details,
+                type="milestone",
+                actions=[],
+            )
+            milestones.append(milestone)
+
+        return GoalNode(
+            id=goal_id,
+            label=request.goal if request else "Goal",
+            type="goal",
+            milestones=milestones,
+            actions=[],
+        )
 
     async def stream_roadmap(
         self,
         request: GenerateRoadmapRequest,
         user_id: str | None,
     ) -> AsyncGenerator[str, None]:
-        """Execute roadmap graph and yield SSE events."""
-        logger.info(f"[Stream] Called for goal='{request.goal}', user_id={user_id}")
-
-        initial_state = {
-            "context": {
-                "goal": request.goal,
-                "why": request.why,
-                "timeline": request.timeline,
-                "obstacles": request.obstacles,
-                "resources": request.resources,
-            },
-            "goal_node": None,
-        }
-
-        try:
-            effective_user_id = user_id or "anonymous"
-            tags = ["roadmap", "authenticated" if user_id else "anonymous"]
-
-            thread_id = f"roadmap_{effective_user_id}_{request.goal[:10]}"
-
-            langfuse_handler = get_langfuse_handler(
-                user_id=effective_user_id, session_id=thread_id, tags=tags
+        """
+        Legacy: One-shot generation (no HIL).
+        
+        Kept for backward compatibility.
+        """
+        if not user_id:
+            error_data = ErrorEventData(
+                code="auth_required", message="Authentication required"
             )
-            callbacks = [langfuse_handler] if langfuse_handler else []
-
-            async for event in self.graph_manager.stream_events(
-                initial_state,
-                thread_id,
-                callbacks=callbacks,
-            ):
-                event_type = event["event"]
-                event_name = event.get("name")
-
-                # Handle skeleton generation
-                if event_type == "on_chain_end" and event_name == "plan_skeleton":
-                    sse_event = await self._handle_skeleton(event)
-                    if sse_event:
-                        yield sse_event
-
-                # Handle actions generation
-                elif event_type == "on_chain_end" and event_name == "generate_actions":
-                    async for sse_event in self._handle_actions(event):
-                        yield sse_event
-
-                elif (
-                    event_type == "on_chain_end"
-                    and event_name == "generate_direct_actions"
-                ):
-                    async for sse_event in self._handle_direct_actions(
-                        event, request, user_id
-                    ):
-                        yield sse_event
-
-            logger.info("[Stream] Generation completed successfully.")
-
-        except Exception as e:
-            logger.error(f"[Stream] Critical Error: {e}", exc_info=True)
-            error_data = ErrorEventData(code="internal_error", message=str(e))
             yield f"event: error\ndata: {error_data.model_dump_json()}\n\n"
+            return
 
-    async def _handle_skeleton(self, event: dict) -> str | None:
-        """Handle skeleton output and generate SSE event."""
-        output = event["data"].get("output")
-        if not output:
-            return None
+        # Stream skeleton then immediately stream actions
+        thread_id = None
 
-        goal_node = output.get("goal_node")
-        if not goal_node:
-            return None
+        async for event in self.stream_skeleton(request, user_id):
+            yield event
+            if "thread_id" in event:
+                import json
+                data_start = event.find("data: ") + 6
+                data = json.loads(event[data_start:].strip())
+                thread_id = data.get("thread_id")
 
-        # Convert to dict, clear actions (will be filled later)
-        goal_dict = (
-            goal_node.model_dump() if hasattr(goal_node, "model_dump") else goal_node
+        if thread_id:
+            async for event in self.stream_actions(thread_id, user_id, request):
+                yield event
+
+    async def _yield_actions(self, goal_node: GoalNode) -> AsyncGenerator[str, None]:
+        """Yield action events for all milestones and direct actions."""
+        milestones = (
+            goal_node.milestones
+            if hasattr(goal_node, "milestones")
+            else goal_node.get("milestones", [])
         )
-        for ms in goal_dict.get("milestones", []):
-            ms["actions"] = []
-        goal_dict["actions"] = []
-
-        evt = RoadmapSkeletonEvent(goal=goal_dict)
-        return f"event: roadmap_skeleton\ndata: {evt.model_dump_json()}\n\n"
-
-    async def _handle_actions(self, event: dict) -> AsyncGenerator[str, None]:
-        """Handle milestone actions and generate SSE events."""
-        output = event["data"].get("output")
-        if not output:
-            return
-
-        goal_node = output.get("goal_node")
-        if not goal_node:
-            return
-
-        if isinstance(goal_node, dict):
-            milestones = goal_node.get("milestones", []) or []
-        else:
-            milestones = getattr(goal_node, "milestones", []) or []
 
         for ms in milestones:
-            if isinstance(ms, dict):
-                actions = ms.get("actions", []) or []
-                ms_id = ms.get("id")
-            else:
-                actions = getattr(ms, "actions", []) or []
-                ms_id = ms.id
+            ms_id = ms.id if hasattr(ms, "id") else ms.get("id")
+            actions = ms.actions if hasattr(ms, "actions") else ms.get("actions", [])
 
             if actions:
-                actions_view = [
-                    a.model_dump() if hasattr(a, "model_dump") else a for a in actions
-                ]
+                actions_view = [self._to_dict(a) for a in actions]
                 evt = RoadmapActionsEvent(milestone_id=ms_id, actions=actions_view)
                 yield f"event: roadmap_actions\ndata: {evt.model_dump_json()}\n\n"
 
-    async def _handle_direct_actions(
-        self,
-        event: dict,
-        request: GenerateRoadmapRequest,
-        user_id: str | None,
-    ) -> AsyncGenerator[str, None]:
-        """Handle direct goal actions, persist roadmap, and generate SSE event."""
-        output = event["data"].get("output")
-        if not output:
-            # If step failed or returned empty output, logging it
-            logger.warning("[Stream] generate_direct_actions returned no output")
-            return
-
-        goal_node = output.get("goal_node")
-        roadmap_id = None
-
-        # Persist roadmap (Always persist if we have a valid goal_node at this stage)
-        if user_id and goal_node:
-            roadmap_id = await self._persist_roadmap(request, goal_node, user_id)
-        else:
-            logger.warning(
-                "[Stream] Skipping persistence: No user_id or goal_node missing"
-            )
-
-        # Yield direct actions event
-        if goal_node:
-            direct_actions = getattr(goal_node, "actions", []) or []
-            if direct_actions:
-                actions_view = [
-                    a.model_dump() if hasattr(a, "model_dump") else a
-                    for a in direct_actions
-                ]
-                evt = RoadmapDirectActionsEvent(actions=actions_view)
-                yield f"event: roadmap_direct_actions\ndata: {evt.model_dump_json()}\n\n"
-
-        # Yield roadmap_complete event with server UUID
-        if roadmap_id:
-            complete_evt = RoadmapCompleteEvent(roadmap_id=str(roadmap_id))
-            yield f"event: roadmap_complete\ndata: {complete_evt.model_dump_json()}\n\n"
+        # Direct goal actions
+        direct_actions = (
+            goal_node.actions
+            if hasattr(goal_node, "actions")
+            else goal_node.get("actions", [])
+        )
+        if direct_actions:
+            actions_view = [self._to_dict(a) for a in direct_actions]
+            evt = RoadmapActionsEvent(milestone_id=None, actions=actions_view)
+            yield f"event: roadmap_actions\ndata: {evt.model_dump_json()}\n\n"
 
     async def _persist_roadmap(
         self,
         request: GenerateRoadmapRequest,
-        goal_node: any,
+        goal_node: GoalNode,
         user_id: str,
     ) -> UUID | None:
-        """Persist roadmap to database and return roadmap ID."""
+        """Persist roadmap to database."""
         try:
-            logger.info(f"Persisting roadmap for user {user_id}")
-            goal_dict = (
-                goal_node.model_dump()
-                if hasattr(goal_node, "model_dump")
-                else goal_node
-            )
-            logger.info(f"[Service] Goal Dict keys: {goal_dict.keys()}")
+            goal_dict = self._to_dict(goal_node)
             milestones = goal_dict.get("milestones", [])
-            goal_actions = goal_dict.get("actions", [])  # Extract direct actions
+            goal_actions = goal_dict.get("actions", [])
 
             logger.info(
-                f"Saving roadmap '{request.goal}' with {len(milestones)} milestones and {len(goal_actions)} direct actions"
+                f"Saving roadmap '{request.goal}' with {len(milestones)} milestones"
             )
-            if len(milestones) > 0:
-                logger.info(f"[Service] First Milestone keys: {milestones[0].keys()}")
-            if len(goal_actions) > 0:
-                logger.info(f"[Service] First Action keys: {goal_actions[0].keys()}")
 
             async with self.uow as uow:
-                # Check if roadmap exists for this conversation
                 existing_roadmap = None
                 if request.conversation_id:
                     existing_roadmap = await uow.roadmaps.get_by_conversation_id(
@@ -231,14 +264,12 @@ class RoadmapStreamService:
                     )
 
                 if existing_roadmap:
-                    logger.info(f"[Service] Updating roadmap {existing_roadmap.id}")
                     roadmap = await uow.roadmaps.update_with_nodes(
                         roadmap_id=existing_roadmap.id,
                         milestones_data=milestones,
                         goal_actions_data=goal_actions,
                     )
                 else:
-                    logger.info("[Service] Creating new roadmap")
                     roadmap = await uow.roadmaps.create_with_nodes(
                         user_id=user_id,
                         title=request.goal,
@@ -250,8 +281,17 @@ class RoadmapStreamService:
                         else None,
                     )
 
-                logger.info(f"Successfully persisted roadmap: {roadmap.id}")
                 return roadmap.id
+
         except Exception as e:
             logger.error(f"Failed to persist roadmap: {e}", exc_info=True)
             return None
+
+    @staticmethod
+    def _to_dict(obj) -> dict:
+        """Convert object to dict safely."""
+        if hasattr(obj, "model_dump"):
+            return obj.model_dump()
+        if isinstance(obj, dict):
+            return obj
+        return dict(obj)

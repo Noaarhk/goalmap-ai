@@ -1,18 +1,23 @@
-from typing import TypedDict
+"""
+DEPRECATED: Roadmap no longer uses LangGraph state.
+This module is kept for backward compatibility.
+"""
+
+import warnings
+from typing import Literal, TypedDict
 
 from app.schemas.events.roadmap import GoalNode
 
+warnings.warn(
+    "app.agents.roadmap.state is deprecated. Roadmap now uses plain async functions.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 
 class RoadmapState(TypedDict):
-    """
-    State for the Roadmap Generation Agent.
+    """Deprecated state type."""
 
-    Attributes:
-        context: All input context (goal, why, timeline, obstacles, resources).
-        goal_node: The complete hierarchical goal structure with IDs assigned.
-    """
-
-    # Input context from discovery
-    context: dict  # {"goal": "...", "why": "...", "timeline": "...", ...}
-    # Output - hierarchical goal structure (contains milestones and actions)
+    context: dict
     goal_node: GoalNode | None
+    status: Literal["pending", "skeleton_ready", "approved", "completed"] | None

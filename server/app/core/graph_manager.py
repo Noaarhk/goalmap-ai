@@ -1,57 +1,26 @@
-import logging
-from typing import Any, AsyncGenerator
+"""
+DEPRECATED: Agents now use plain async functions instead of LangGraph.
 
-from app.core.database import get_postgres_saver
-from langgraph.graph.state import CompiledStateGraph
+This module is no longer used and will be removed in a future version.
+Both Discovery and Roadmap agents have been simplified to direct function calls.
+"""
 
-logger = logging.getLogger(__name__)
+import warnings
+
+warnings.warn(
+    "app.core.graph_manager is deprecated. "
+    "Agents now use plain async functions in their respective pipeline modules.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 class GraphManager:
     """
-    Manages the lifecycle and execution of LangGraph agents.
-    Handles:
-    - Graph compilation
-    - Checkpointer injection (Postgres)
-    - Callback configuration (Langfuse)
-    - Streaming execution
+    DEPRECATED: No longer used.
     """
 
-    def __init__(self, graph_factory, graph_name: str, checkpointer_factory=None):
-        self.graph_factory = graph_factory
-        self.graph_name = graph_name
-        self.checkpointer_factory = checkpointer_factory or get_postgres_saver
-
-    async def stream_events(
-        self,
-        initial_state: dict[str, Any],
-        thread_id: str | None = None,
-        callbacks: list | None = None,
-        version: str = "v1",
-    ) -> AsyncGenerator[dict[str, Any], None]:
-        """
-        Executes the graph and yields events.
-        Manages checkpointer context.
-        """
-        # Default thread_id if not provided (stateless/transient run)
-        if not thread_id:
-            thread_id = "default_thread"
-
-        config = {"configurable": {"thread_id": thread_id}}
-        if callbacks:
-            config["callbacks"] = callbacks
-
-        # Context Manage Checkpointer
-        try:
-            async with self.checkpointer_factory() as checkpointer:
-                # Compile graph with checkpointer at runtime
-                graph: CompiledStateGraph = self.graph_factory(checkpointer)
-
-                async for event in graph.astream_events(
-                    initial_state, config=config, version=version
-                ):
-                    yield event
-
-        except Exception as e:
-            logger.error(f"Error executing graph {self.graph_name}: {e}")
-            raise e
+    def __init__(self, *args, **kwargs):
+        raise NotImplementedError(
+            "GraphManager has been removed. Use pipeline functions directly."
+        )
