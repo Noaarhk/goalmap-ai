@@ -1,3 +1,10 @@
+"""
+Sync prompts to Langfuse.
+
+Usage:
+    cd server && uv run python scripts/sync_prompts.py
+"""
+
 import os
 import sys
 
@@ -7,6 +14,11 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.agents.discovery.prompts import (
     FALLBACK_ANALYSIS_SYSTEM_PROMPT,
     FALLBACK_CHAT_SYSTEM_PROMPT,
+)
+from app.agents.roadmap.prompts import (
+    ACTION_GENERATOR_PROMPT,
+    DIRECT_ACTIONS_PROMPT,
+    STRATEGIC_PLANNER_PROMPT,
 )
 from app.core.config import settings
 from langfuse import Langfuse
@@ -25,7 +37,8 @@ def main():
         host=settings.LANGFUSE_HOST,
     )
 
-    # 1. Discovery Analysis Prompt
+    # --- Discovery Prompts ---
+
     print("Creating 'discovery-analysis'...")
     langfuse.create_prompt(
         name="discovery-analysis",
@@ -44,7 +57,6 @@ def main():
         },
     )
 
-    # 2. Discovery Chat Prompt
     print("Creating 'discovery-chat'...")
     langfuse.create_prompt(
         name="discovery-chat",
@@ -62,7 +74,55 @@ def main():
         },
     )
 
-    print("Success! Prompts synced.")
+    # --- Roadmap Prompts ---
+
+    print("Creating 'roadmap-skeleton'...")
+    langfuse.create_prompt(
+        name="roadmap-skeleton",
+        prompt=[
+            {"role": "system", "content": STRATEGIC_PLANNER_PROMPT},
+            {"role": "user", "content": "Create the roadmap skeleton."},
+        ],
+        type="chat",
+        labels=["production"],
+        config={
+            "temperature": 0.3,
+            "response_format": {"type": "json_object"},
+        },
+    )
+
+    print("Creating 'roadmap-actions'...")
+    langfuse.create_prompt(
+        name="roadmap-actions",
+        prompt=[
+            {"role": "system", "content": ACTION_GENERATOR_PROMPT},
+            {"role": "user", "content": "Generate actions."},
+        ],
+        type="chat",
+        labels=["production"],
+        config={
+            "temperature": 0.3,
+            "response_format": {"type": "json_object"},
+        },
+    )
+
+    print("Creating 'roadmap-direct-actions'...")
+    langfuse.create_prompt(
+        name="roadmap-direct-actions",
+        prompt=[
+            {"role": "system", "content": DIRECT_ACTIONS_PROMPT},
+            {"role": "user", "content": "Generate direct goal actions."},
+        ],
+        type="chat",
+        labels=["production"],
+        config={
+            "temperature": 0.3,
+            "response_format": {"type": "json_object"},
+        },
+    )
+
+    langfuse.flush()
+    print("✅ Success! All prompts synced to Langfuse.")
 
 
 if __name__ == "__main__":
