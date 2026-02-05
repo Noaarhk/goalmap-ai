@@ -1,13 +1,12 @@
 export interface RoadmapNode {
     id: string;
     label: string;
-    details: string[];
-    is_assumed: boolean;
-    type: "goal" | "milestone" | "action";
+    details: string | null;
+    isAssumed: boolean;
+    type: "goal" | "milestone" | "task";
     status?: "pending" | "in_progress" | "completed";
     order?: number;
     position?: { x: number; y: number };
-    // Enhanced fields
     progress?: number;
     startDate?: string;
     endDate?: string;
@@ -22,7 +21,7 @@ export interface RoadmapEdge {
 }
 
 export interface RoadmapData {
-    id: string;
+    id: string;  // Server UUID (set on roadmap_complete, temporary "rm-xxx" before that)
     createdAt: number;
     title: string;
     score: number;

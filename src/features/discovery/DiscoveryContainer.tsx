@@ -1,6 +1,5 @@
 import { Check, Edit2, History, LogOut, Plus, Swords, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { Edge, Node } from "reactflow";
 import ScoreGauge from "../../components/common/ScoreGauge";
 import { apiClient } from "../../services/apiClient";
 import {
@@ -16,6 +15,7 @@ import {
 	type RoadmapData,
 	type RoadmapNode,
 } from "../../types";
+import { computeTreeLayout } from "../visualization/utils/layoutEngine";
 import BlueprintPreview from "./components/BlueprintPreview";
 import ChatPanel from "./components/ChatPanel";
 
@@ -79,16 +79,16 @@ export function DiscoveryContainer() {
 				const roadmaps = await apiClient.getRoadmaps();
 				console.log("[DiscoveryContainer] Loaded roadmaps:", roadmaps);
 				const historyData = roadmaps.map((r: any) => {
-					// Transform API nodes to frontend format
+					// Transform API nodes to frontend format (snake_case → camelCase)
 					const transformedNodes = (r.nodes || []).map((n: any) => ({
 						id: n.id,
 						label: n.label,
 						type: n.type,
-						is_assumed: n.is_assumed,
-						details: n.details ? [n.details] : [],
+						isAssumed: n.is_assumed,
+						details: n.details || null,
 						status: n.status,
 						order: n.order,
-						progress: 0,
+						progress: n.progress || 0,
 						startDate: n.start_date,
 						endDate: n.end_date,
 						parentId: n.parent_id,
@@ -328,8 +328,8 @@ export function DiscoveryContainer() {
 							id: goal.id,
 							type: "goal" as const,
 							label: goal.label,
-							is_assumed: false,
-							details: goal.details ? [goal.details] : [],
+							isAssumed: false,
+							details: goal.details || null,
 						};
 
 						// Create milestone nodes
@@ -337,8 +337,8 @@ export function DiscoveryContainer() {
 							id: m.id,
 							type: "milestone" as const,
 							label: m.label,
-							is_assumed: m.is_assumed,
-							details: m.details ? [m.details] : [],
+							isAssumed: m.is_assumed,
+							details: m.details || null,
 						}));
 
 						// Generate edges dynamically (goal -> milestones)
@@ -378,53 +378,59 @@ export function DiscoveryContainer() {
 							),
 						);
 
-						const actionNodes = actions.map((a: any) => ({
+						const taskNodes = actions.map((a: any) => ({
 							id: a.id,
-							type: "action" as const,
+							type: "task" as const,
 							label: a.label,
-							is_assumed: false,
-							details: a.details ? [a.details] : [],
+							isAssumed: false,
+							details: a.details || null,
 						}));
 
-						const actionEdges = actionNodes.map((a: any) => ({
+						const taskEdges = taskNodes.map((a: any) => ({
 							id: `e-${milestoneId}-${a.id}`,
 							source: milestoneId,
 							target: a.id,
 						}));
 
-						currentRoadmap.nodes.push(...actionNodes);
-						currentRoadmap.edges.push(...actionEdges);
+						currentRoadmap.nodes.push(...taskNodes);
+						currentRoadmap.edges.push(...taskEdges);
 						// Don't call updateView() here - stay in TransitionView to show streaming progress
 					} else if (event.type === "roadmap_direct_actions") {
 						setStreamingStatus("Finalizing roadmap...");
 						setStreamingStep(4); // Step 4: Finalizing
-						// 3. Direct Actions: Add actions directly to goal
+						// 3. Direct Tasks: Add tasks directly to goal
 						const actions = event.data.actions;
 						const goalNode = currentRoadmap.nodes.find(
 							(n) => n.type === "goal",
 						);
 						if (goalNode && actions.length > 0) {
-							const actionNodes = actions.map((a: any) => ({
+							const taskNodes = actions.map((a: any) => ({
 								id: a.id,
-								type: "action" as const,
+								type: "task" as const,
 								label: a.label,
-								is_assumed: false,
-								details: a.details ? [a.details] : [],
+								isAssumed: false,
+								details: a.details || null,
 								startDate: a.start_date || a.startDate,
 								endDate: a.end_date || a.endDate,
 								parentId: a.parent_id || a.parentId,
 							}));
 
-							const actionEdges = actionNodes.map((a: any) => ({
+							const taskEdges = taskNodes.map((a: any) => ({
 								id: `e-${goalNode.id}-${a.id}`,
 								source: goalNode.id,
 								target: a.id,
 							}));
 
-							currentRoadmap.nodes.push(...actionNodes);
-							currentRoadmap.edges.push(...actionEdges);
+							currentRoadmap.nodes.push(...taskNodes);
+							currentRoadmap.edges.push(...taskEdges);
 							updateView();
 						}
+					} else if (event.type === "roadmap_complete") {
+						// 4. Complete: Replace temporary ID with server UUID
+						const { roadmap_id } = event.data;
+						console.log("[Roadmap] Server ID received, replacing temp ID:", currentRoadmap.id, "→", roadmap_id);
+						currentRoadmap.id = roadmap_id;
+						updateView();
 					} else if (event.type === "error") {
 						console.error("Roadmap stream error:", event.data);
 					}
@@ -442,113 +448,11 @@ export function DiscoveryContainer() {
 		}
 	};
 
-	const regenerateFlow = (data: any) => {
-		// 3-tier layout: Goal at top -> Milestones in middle -> Actions at bottom
-		const flowNodes: Node[] = [];
-		const adjacency = new Map<string, string[]>();
-		data.edges.forEach((e: any) => {
-			if (!adjacency.has(e.source)) adjacency.set(e.source, []);
-			adjacency.get(e.source)?.push(e.target);
-		});
-
-		// Find goal node (top level)
-		const goalNode = data.nodes.find((n: any) => n.type === "goal");
-		const milestones = data.nodes.filter((n: any) => n.type === "milestone");
-
-		// Layout constants
-		const GOAL_Y = 0;
-		const MILESTONE_Y = 300;
-		const ACTION_Y = 600;
-		const NODE_SPACING_X = 350;
-
-		// Place goal node at top center
-		if (goalNode) {
-			const totalWidth = (milestones.length - 1) * NODE_SPACING_X;
-			flowNodes.push({
-				id: goalNode.id,
-				type: "roadmapNode",
-				data: {
-					label: goalNode.label,
-					is_assumed: goalNode.is_assumed,
-					type: goalNode.type,
-					details: goalNode.details,
-				},
-				position: { x: totalWidth / 2, y: GOAL_Y },
-			});
-		}
-
-		// Place milestones in a row below goal
-		milestones.forEach((milestone: any, mIdx: number) => {
-			const xPos = mIdx * NODE_SPACING_X;
-			flowNodes.push({
-				id: milestone.id,
-				type: "roadmapNode",
-				data: {
-					label: milestone.label,
-					is_assumed: milestone.is_assumed,
-					type: milestone.type,
-					details: milestone.details,
-				},
-				position: { x: xPos, y: MILESTONE_Y },
-			});
-
-			// Get actions for this milestone
-			const actionIds = adjacency.get(milestone.id) || [];
-			const actions = actionIds
-				.map((id) => data.nodes.find((n: any) => n.id === id))
-				.filter(
-					(n) => n && (n.type === "action" || n.type === "task"),
-				) as RoadmapNode[];
-
-			// Place actions below their milestone
-			actions.forEach((action, aIdx) => {
-				const actionXOffset = (aIdx - (actions.length - 1) / 2) * 150;
-				flowNodes.push({
-					id: action.id,
-					type: "roadmapNode",
-					data: {
-						label: action.label,
-						is_assumed: action.is_assumed,
-						type: action.type,
-						details: action.details,
-					},
-					position: { x: xPos + actionXOffset, y: ACTION_Y + aIdx * 80 },
-				});
-			});
-		});
-
-		// Place goal direct actions (cross-cutting actions) to the right of milestones
-		if (goalNode) {
-			const goalActionIds = adjacency.get(goalNode.id) || [];
-			const goalActions = goalActionIds
-				.map((id) => data.nodes.find((n: any) => n.id === id))
-				.filter(
-					(n) => n && (n.type === "action" || n.type === "task"),
-				) as RoadmapNode[];
-
-			const rightMostX = milestones.length * NODE_SPACING_X;
-			goalActions.forEach((action, aIdx) => {
-				flowNodes.push({
-					id: action.id,
-					type: "roadmapNode",
-					data: {
-						label: action.label,
-						is_assumed: action.is_assumed,
-						type: action.type,
-						details: action.details,
-					},
-					position: { x: rightMostX + 100, y: MILESTONE_Y + aIdx * 100 },
-				});
-			});
-		}
-
-		const flowEdges: Edge[] = data.edges.map((e: any) => ({
-			id: e.id,
-			source: e.source,
-			target: e.target,
-			animated: true,
-			style: { stroke: "#3d84f5", strokeWidth: 2 },
-		}));
+	const regenerateFlow = (data: RoadmapData) => {
+		const { nodes: flowNodes, edges: flowEdges } = computeTreeLayout(
+			data.nodes,
+			data.edges,
+		);
 
 		setFlowNodes(flowNodes);
 		setFlowEdges(flowEdges);
