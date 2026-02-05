@@ -66,7 +66,7 @@ class DiscoveryStreamService:
             "analysis_status": "starting",
         }
 
-        # Streaming state for v2
+        # Streaming state
         stream_buffer = ""
         is_streaming_response = False
 
@@ -140,8 +140,11 @@ class DiscoveryStreamService:
                 )
 
         except Exception as e:
-            logger.error(f"Stream error: {e}")
-            error_data = ErrorEventData(code="internal_error", message=str(e))
+            logger.error(f"Stream error: {e}", exc_info=True)
+            error_data = ErrorEventData(
+                code="internal_error",
+                message="시스템 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+            )
             yield f"event: error\ndata: {error_data.model_dump_json()}\n\n"
 
     @staticmethod
@@ -151,9 +154,7 @@ class DiscoveryStreamService:
             chat_uuid = uuid.UUID(chat_id)
             async with async_session_factory() as session:
                 repo = ConversationRepository(session)
-                await repo.append_message(
-                    chat_uuid, {"role": "user", "content": message}
-                )
+                await repo.append_message(chat_uuid, role="user", content=message)
         except ValueError:
             logger.warning(f"Invalid chat_id format: {chat_id}")
         except Exception as e:
@@ -166,9 +167,7 @@ class DiscoveryStreamService:
             chat_uuid = uuid.UUID(chat_id)
             async with async_session_factory() as session:
                 repo = ConversationRepository(session)
-                await repo.append_message(
-                    chat_uuid, {"role": "assistant", "content": message}
-                )
+                await repo.append_message(chat_uuid, role="assistant", content=message)
         except ValueError:
             pass  # Already logged warning above
         except Exception as e:
@@ -210,7 +209,7 @@ class DiscoveryStreamService:
         if not content:
             return None
 
-        # --- v3 Pipeline: Direct streaming ---
+        # --- Pipeline: Direct streaming ---
         if "generate_chat" in tags:
             token_data = TokenEventData(text=content, run_id=event["run_id"])
             return (
@@ -220,22 +219,22 @@ class DiscoveryStreamService:
                 f"event: token\ndata: {token_data.model_dump_json()}\n\n",
             )
 
-        # --- v2 Single Turn: Parse JSON response ---
+        # --- Single Turn: Parse JSON response ---
         if "single_turn_handler" in tags:
-            return DiscoveryStreamService._parse_v2_response(
+            return DiscoveryStreamService._parse_response(
                 content, stream_buffer, is_streaming_response, event["run_id"]
             )
 
         return None
 
     @staticmethod
-    def _parse_v2_response(
+    def _parse_response(
         content: str,
         stream_buffer: str,
         is_streaming_response: bool,
         run_id: str,
     ) -> tuple[str, str, bool, str | None]:
-        """Parse v2 single-turn JSON response and extract text."""
+        """Parse JSON response and extract text."""
         if not is_streaming_response:
             stream_buffer += content
             START_TOKEN = '"response": "'
