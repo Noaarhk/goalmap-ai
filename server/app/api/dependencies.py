@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from typing import TYPE_CHECKING
 
@@ -10,6 +12,7 @@ from jwt import PyJWKClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
+    from app.core.uow import AsyncUnitOfWork
     from app.repositories.conversation_repo import ConversationRepository
     from app.repositories.roadmap_repo import RoadmapRepository
     from app.services.discovery_service import DiscoveryStreamService
@@ -133,6 +136,15 @@ async def get_optional_user(
         return None
 
 
+# --- Unit of Work Provider ---
+
+
+def get_uow() -> "AsyncUnitOfWork":
+    from app.core.uow import AsyncUnitOfWork
+
+    return AsyncUnitOfWork()
+
+
 # --- Repository Providers ---
 
 
@@ -156,16 +168,16 @@ async def get_roadmap_repo(
 
 
 def get_discovery_service(
-    repo: "ConversationRepository" = Depends(get_conversation_repo),
+    uow: "AsyncUnitOfWork" = Depends(get_uow),
 ) -> "DiscoveryStreamService":
     from app.services.discovery_service import DiscoveryStreamService, discovery_manager
 
-    return DiscoveryStreamService(repo, discovery_manager)
+    return DiscoveryStreamService(uow, discovery_manager)
 
 
 def get_roadmap_service(
-    repo: "RoadmapRepository" = Depends(get_roadmap_repo),
+    uow: "AsyncUnitOfWork" = Depends(get_uow),
 ) -> "RoadmapStreamService":
     from app.services.roadmap_service import RoadmapStreamService, roadmap_manager
 
-    return RoadmapStreamService(repo, roadmap_manager)
+    return RoadmapStreamService(uow, roadmap_manager)

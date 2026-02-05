@@ -40,9 +40,8 @@ class ConversationRepository(BaseRepository[Conversation]):
     async def create(self, **kwargs) -> Conversation:
         conversation = Conversation(**kwargs)
         self.db.add(conversation)
-        await self.db.commit()
-        await self.db.refresh(conversation)
-        # Re-fetch with eager loads to satisfy response model
+        await self.db.flush()
+        # No refresh here, re-fetch will do it if needed, or rely on UoW commit
         res = await self.get_with_messages_and_blueprint(conversation.id)
         if not res:
             raise Exception("Conversation created but not found")
@@ -51,9 +50,8 @@ class ConversationRepository(BaseRepository[Conversation]):
     async def update(self, db_obj: Conversation, **kwargs) -> Conversation:
         for key, value in kwargs.items():
             setattr(db_obj, key, value)
-        await self.db.commit()
-        await self.db.refresh(db_obj)
-        # Re-fetch to restore relationships that might be expired by refresh
+        await self.db.flush()
+        # Re-fetch to restore relationships
         res = await self.get_with_messages_and_blueprint(db_obj.id)
         if not res:
             raise Exception("Conversation updated but not found")
@@ -72,8 +70,7 @@ class ConversationRepository(BaseRepository[Conversation]):
                 order=new_order,
             )
             self.db.add(new_message)
-            await self.db.commit()
-            await self.db.refresh(conversation)
+            await self.db.flush()
             # Re-fetch to ensure order and relationships are correct for response
             return await self.get_with_messages_and_blueprint(conversation_id)
         return conversation
@@ -130,9 +127,9 @@ class ConversationRepository(BaseRepository[Conversation]):
                     conversation_id=conversation_id, **mapped_data
                 )
                 self.db.add(new_blueprint)
+                conversation.blueprint = new_blueprint
 
-            await self.db.commit()
-            await self.db.refresh(conversation)
+            await self.db.flush()
             # Re-fetch is vital here too
             return await self.get_with_messages_and_blueprint(conversation_id)
         return conversation

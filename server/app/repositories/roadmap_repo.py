@@ -132,9 +132,8 @@ class RoadmapRepository(BaseRepository[Roadmap]):
                 )
                 self.db.add(action_node)
 
-        await self.db.commit()
-        await self.db.refresh(roadmap)
-        logger.info("[Repo] Commit successful")
+        await self.db.flush()
+        logger.info("[Repo] Nodes creation successful (flushed)")
         return roadmap
 
     async def get_by_user_id(self, user_id: str) -> list[Roadmap]:
@@ -229,8 +228,7 @@ class RoadmapRepository(BaseRepository[Roadmap]):
                 )
                 self.db.add(action_node)
 
-        await self.db.commit()
-        await self.db.refresh(roadmap)
+        await self.db.flush()
         return roadmap
 
     async def get(self, id: str) -> Roadmap | None:

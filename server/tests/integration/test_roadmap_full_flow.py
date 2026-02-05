@@ -57,19 +57,38 @@ async def test_roadmap_full_flow_persistence(db_session):
 
         from app.agents.roadmap.graph import get_graph as get_roadmap_graph
         from app.core.graph_manager import GraphManager
-        from app.repositories.roadmap_repo import RoadmapRepository
+        from app.core.uow import AsyncUnitOfWork
         from langgraph.checkpoint.memory import MemorySaver
 
         @asynccontextmanager
         async def memory_saver_factory():
             yield MemorySaver()
 
+        class TestUnitOfWork(AsyncUnitOfWork):
+            def __init__(self, session):
+                super().__init__()
+                self.session = session
+
+            async def __aenter__(self):
+                from app.repositories.conversation_repo import ConversationRepository
+                from app.repositories.roadmap_repo import RoadmapRepository
+
+                self.conversations = ConversationRepository(self.session)
+                self.roadmaps = RoadmapRepository(self.session)
+                return self
+
+            async def __aexit__(self, exc_type, exc_val, exc_tb):
+                if exc_type:
+                    await self.rollback()
+                else:
+                    await self.session.flush()
+
         test_graph_manager = GraphManager(
             get_roadmap_graph, "roadmap_agent", memory_saver_factory
         )
 
-        repo = RoadmapRepository(db_session)
-        service = RoadmapStreamService(repo, test_graph_manager)
+        uow = TestUnitOfWork(db_session)
+        service = RoadmapStreamService(uow, test_graph_manager)
 
         # 4. Run Stream
         # Consume the generator

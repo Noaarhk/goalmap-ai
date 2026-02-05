@@ -16,7 +16,7 @@ from app.agents.roadmap.graph import get_graph as get_roadmap_graph
 
 # Removed async_session_factory as it's no longer needed in service
 from app.core.graph_manager import GraphManager
-from app.repositories.roadmap_repo import RoadmapRepository
+from app.core.uow import AsyncUnitOfWork
 from app.schemas.api.roadmaps import GenerateRoadmapRequest
 from app.schemas.events.base import ErrorEventData
 from app.schemas.events.roadmap import (
@@ -35,8 +35,8 @@ roadmap_manager = GraphManager(get_roadmap_graph, "roadmap")
 class RoadmapStreamService:
     """Service for streaming Roadmap Agent responses."""
 
-    def __init__(self, repo: RoadmapRepository, graph_manager: GraphManager):
-        self.repo = repo
+    def __init__(self, uow: AsyncUnitOfWork, graph_manager: GraphManager):
+        self.uow = uow
         self.graph_manager = graph_manager
 
     async def stream_roadmap(
@@ -215,37 +215,34 @@ class RoadmapStreamService:
             if len(goal_actions) > 0:
                 logger.info(f"[Service] First Action keys: {goal_actions[0].keys()}")
 
-            # Check if roadmap exists for this conversation
-            existing_roadmap = None
-            if request.conversation_id:
-                existing_roadmap = await self.repo.get_by_conversation_id(
-                    request.conversation_id
-                )
+            async with self.uow as uow:
+                # Check if roadmap exists for this conversation
+                existing_roadmap = None
+                if request.conversation_id:
+                    existing_roadmap = await uow.roadmaps.get_by_conversation_id(
+                        request.conversation_id
+                    )
 
-            if existing_roadmap:
-                logger.info(
-                    f"[Service] Found existing roadmap {existing_roadmap.id} for conversation {request.conversation_id}. Updating..."
-                )
-                roadmap = await self.repo.update_with_nodes(
-                    roadmap_id=existing_roadmap.id,
-                    milestones_data=milestones,
-                    goal_actions_data=goal_actions,
-                )
-            else:
-                logger.info(
-                    f"[Service] Creating new roadmap for conversation {request.conversation_id}"
-                )
-                roadmap = await self.repo.create_with_nodes(
-                    user_id=user_id,
-                    title=request.goal,
-                    goal=request.goal,
-                    milestones_data=milestones,
-                    goal_actions_data=goal_actions,
-                    conversation_id=UUID(request.conversation_id)
-                    if request.conversation_id
-                    else None,
-                )
+                if existing_roadmap:
+                    logger.info(f"[Service] Updating roadmap {existing_roadmap.id}")
+                    roadmap = await uow.roadmaps.update_with_nodes(
+                        roadmap_id=existing_roadmap.id,
+                        milestones_data=milestones,
+                        goal_actions_data=goal_actions,
+                    )
+                else:
+                    logger.info("[Service] Creating new roadmap")
+                    roadmap = await uow.roadmaps.create_with_nodes(
+                        user_id=user_id,
+                        title=request.goal,
+                        goal=request.goal,
+                        milestones_data=milestones,
+                        goal_actions_data=goal_actions,
+                        conversation_id=UUID(request.conversation_id)
+                        if request.conversation_id
+                        else None,
+                    )
 
-            logger.info(f"Successfully persisted roadmap: {roadmap.id}")
+                logger.info(f"Successfully persisted roadmap: {roadmap.id}")
         except Exception as e:
             logger.error(f"Failed to persist roadmap: {e}", exc_info=True)

@@ -16,7 +16,7 @@ from app.agents.discovery.graph import get_graph as get_discovery_graph
 
 # Removed async_session_factory
 from app.core.graph_manager import GraphManager
-from app.repositories.conversation_repo import ConversationRepository
+from app.core.uow import AsyncUnitOfWork
 from app.schemas.api.chat import ChatRequest
 from app.schemas.events.base import ErrorEventData, StatusEventData, TokenEventData
 from app.schemas.events.discovery import BlueprintUpdateEventData
@@ -32,8 +32,8 @@ discovery_manager = GraphManager(get_discovery_graph, "discovery")
 class DiscoveryStreamService:
     """Service for streaming Discovery Agent responses."""
 
-    def __init__(self, repo: ConversationRepository, graph_manager: GraphManager):
-        self.repo = repo
+    def __init__(self, uow: AsyncUnitOfWork, graph_manager: GraphManager):
+        self.uow = uow
         self.graph_manager = graph_manager
 
     async def stream_chat(
@@ -133,11 +133,14 @@ class DiscoveryStreamService:
                     if sse_event:
                         yield sse_event
 
-            # Persist assistant message at end
+            # Persist assistant message at end (separate atomic action)
             if user_id and request.chat_id and full_assistant_response:
-                await self._persist_assistant_message(
-                    request.chat_id, full_assistant_response
-                )
+                async with self.uow as uow:
+                    await uow.conversations.append_message(
+                        uuid.UUID(request.chat_id),
+                        role="assistant",
+                        content=full_assistant_response,
+                    )
 
         except Exception as e:
             logger.error(f"Stream error: {e}", exc_info=True)
@@ -151,23 +154,12 @@ class DiscoveryStreamService:
         """Persist user message to database."""
         try:
             chat_uuid = uuid.UUID(chat_id)
-            # Use injected repository
-            await self.repo.append_message(chat_uuid, role="user", content=message)
-        except ValueError:
-            logger.warning(f"Invalid chat_id format: {chat_id}")
+            async with self.uow as uow:
+                await uow.conversations.append_message(
+                    chat_uuid, role="user", content=message
+                )
         except Exception as e:
             logger.error(f"Failed to persist user message: {e}")
-
-    async def _persist_assistant_message(self, chat_id: str, message: str) -> None:
-        """Persist assistant message to database."""
-        try:
-            chat_uuid = uuid.UUID(chat_id)
-            # Use injected repository
-            await self.repo.append_message(chat_uuid, role="assistant", content=message)
-        except ValueError:
-            pass  # Already logged warning above
-        except Exception as e:
-            logger.error(f"Failed to persist assistant message: {e}")
 
     @staticmethod
     async def _handle_token_stream(
@@ -323,7 +315,8 @@ class DiscoveryStreamService:
         if user_id and chat_id:
             try:
                 chat_uuid = uuid.UUID(chat_id)
-                await self.repo.update_blueprint(chat_uuid, bp_dict)
+                async with self.uow as uow:
+                    await uow.conversations.update_blueprint(chat_uuid, bp_dict)
             except Exception as e:
                 logger.error(f"Failed to persist blueprint: {e}")
 

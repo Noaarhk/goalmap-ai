@@ -58,13 +58,32 @@ async def test_roadmap_service_persistence(db_session):
     )
 
     # 3. Call Service Persistence (DI)
-    from app.repositories.roadmap_repo import RoadmapRepository
+    from app.core.uow import AsyncUnitOfWork
+
+    class TestUnitOfWork(AsyncUnitOfWork):
+        def __init__(self, session):
+            super().__init__()
+            self.session = session
+
+        async def __aenter__(self):
+            from app.repositories.conversation_repo import ConversationRepository
+            from app.repositories.roadmap_repo import RoadmapRepository
+
+            self.conversations = ConversationRepository(self.session)
+            self.roadmaps = RoadmapRepository(self.session)
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            if exc_type:
+                await self.rollback()
+            else:
+                await self.session.flush()
 
     # Create Service with injected dependencies
-    repo = RoadmapRepository(db_session)
+    uow = TestUnitOfWork(db_session)
     # We can mock the graph manager as it's not used in _persist_roadmap
     mock_graph_manager = MagicMock()
-    service = RoadmapStreamService(repo, mock_graph_manager)
+    service = RoadmapStreamService(uow, mock_graph_manager)
 
     await service._persist_roadmap(request, goal_node, user_id)
 
