@@ -1,5 +1,3 @@
-from fastapi import APIRouter, Depends, HTTPException
-
 from app.api.dependencies import get_uow
 from app.core.uow import AsyncUnitOfWork
 from app.schemas.api.checkins import (
@@ -9,6 +7,7 @@ from app.schemas.api.checkins import (
     CheckInConfirmResponse,
 )
 from app.services import checkin_service
+from fastapi import APIRouter, Depends, HTTPException
 
 router = APIRouter(prefix="/checkins", tags=["checkins"])
 

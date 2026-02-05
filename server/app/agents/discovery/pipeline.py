@@ -4,7 +4,7 @@ Discovery Pipeline - Simple async functions (no graph needed)
 Flow: analyze_turn() -> generate_chat()
 """
 
-from typing import Any, AsyncGenerator
+from typing import AsyncGenerator
 
 from app.agents.discovery.prompts import (
     FALLBACK_ANALYSIS_SYSTEM_PROMPT,
@@ -56,7 +56,9 @@ async def analyze_turn(
         "goal_score": blueprint.field_scores.goal,
         "current_why": blueprint.why or "Not set",
         "why_score": blueprint.field_scores.why,
-        "milestones": ", ".join(blueprint.milestones) if blueprint.milestones else "None",
+        "milestones": ", ".join(blueprint.milestones)
+        if blueprint.milestones
+        else "None",
         "obstacles": blueprint.obstacles or "None",
         "resources": blueprint.resources or "None",
         "last_message": last_message,
@@ -112,7 +114,9 @@ async def generate_chat_stream(
     )
 
     greeting_instruction = (
-        GREETING_INSTRUCTION_FIRST_TURN if is_first_turn else GREETING_INSTRUCTION_DEFAULT
+        GREETING_INSTRUCTION_FIRST_TURN
+        if is_first_turn
+        else GREETING_INSTRUCTION_DEFAULT
     )
     suggestion_instruction = SUGGESTION_INSTRUCTION if is_asking_for_suggestions else ""
 
@@ -123,7 +127,9 @@ async def generate_chat_stream(
         "goal_score": blueprint.field_scores.goal,
         "current_why": blueprint.why or "Not set",
         "why_score": blueprint.field_scores.why,
-        "milestones": ", ".join(blueprint.milestones) if blueprint.milestones else "None",
+        "milestones": ", ".join(blueprint.milestones)
+        if blueprint.milestones
+        else "None",
         "obstacles": blueprint.obstacles or "None",
         "resources": blueprint.resources or "None",
         "uncertainties": ", ".join([u["text"] for u in blueprint.uncertainties])

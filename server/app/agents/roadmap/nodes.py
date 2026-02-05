@@ -19,7 +19,3 @@ warnings.warn(
 
 # Re-export for backward compatibility
 __all__ = ["generate_skeleton", "generate_actions", "llm"]
-
-# Legacy aliases
-plan_skeleton = generate_skeleton
-generate_all_actions = generate_actions
