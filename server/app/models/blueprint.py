@@ -13,15 +13,14 @@ class Blueprint(Base):
         ForeignKey("conversations.id", ondelete="CASCADE"), unique=True
     )
     start_point: Mapped[str | None] = mapped_column(nullable=True)
-    end_point: Mapped[str | None] = mapped_column(nullable=True)
+    goal: Mapped[str | None] = mapped_column(nullable=True)
+    why: Mapped[str | None] = mapped_column(nullable=True)
 
     # Context fields
     timeline: Mapped[str | None] = mapped_column(nullable=True)
     obstacles: Mapped[str | None] = mapped_column(nullable=True)
     resources: Mapped[str | None] = mapped_column(nullable=True)
 
-    # Stored as lists of strings
-    motivations: Mapped[list[str]] = mapped_column(JSONB, default=list)
     milestones: Mapped[list[str]] = mapped_column(JSONB, default=list)
 
     # New Field: Uncertainties

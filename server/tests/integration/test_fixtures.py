@@ -19,7 +19,7 @@ async def test_seeded_conversation(seeded_conversation):
 
     # Verify blueprint is attached
     assert seeded_conversation.blueprint is not None
-    assert seeded_conversation.blueprint.end_point == "Become a Python Expert"
+    assert seeded_conversation.blueprint.goal == "Become a Python Expert"
     assert seeded_conversation.blueprint.timeline == "3 months"
 
 

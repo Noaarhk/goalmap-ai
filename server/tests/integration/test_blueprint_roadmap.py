@@ -62,12 +62,8 @@ async def test_blueprint_persistence_and_roadmap_creation(db_session):
 
     # Verify Blueprint Persistence
     assert updated_conv.blueprint is not None
-    assert (
-        updated_conv.blueprint.end_point == "Become a Python Expert"
-    )  # Mapped from 'goal'
-    assert updated_conv.blueprint.motivations == [
-        "To build amazing AI agents"
-    ]  # Mapped from 'why'
+    assert updated_conv.blueprint.goal == "Become a Python Expert"
+    assert updated_conv.blueprint.why == "To build amazing AI agents"
 
     # Verify New Context Fields
     assert updated_conv.blueprint.timeline == "3 months"

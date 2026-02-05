@@ -25,8 +25,8 @@ class MessageResponse(BaseModel):
 class BlueprintResponse(BaseModel):
     id: UUID
     start_point: str | None
-    end_point: str | None
-    motivations: list[str] = []
+    goal: str | None
+    why: str | None
 
     # Context fields
     timeline: str | None = None
