@@ -1,3 +1,7 @@
+"""
+Integration test for Roadmap generation with HIL flow and persistence.
+"""
+
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -24,6 +28,7 @@ ACTIONS_RESP = {"actions": [{"label": "A1", "details": "ad1", "is_assumed": Fals
 
 @pytest.mark.asyncio
 async def test_roadmap_full_flow_persistence(db_session):
+    """Test full roadmap generation flow with DB persistence."""
     # 1. Setup
     user_id = str(uuid4())
     conv_id = str(uuid4())
@@ -39,30 +44,16 @@ async def test_roadmap_full_flow_persistence(db_session):
         why="Testing",
     )
 
-    # 2. Mock LLM and Session Factory
-    # We patch ainvoke to return fake data so graph runs successfully
-    # We patch async_session_factory to use our test db_session so checking persistence works
-
+    # 2. Mock LLM
     mock_invoke = AsyncMock()
-    # We need to return different things based on call count or input, but simpler:
-    # merge keys.
     mock_invoke.return_value = {
         "goal": SKELETON_RESP["goal"],
         "actions": ACTIONS_RESP["actions"],
     }
 
     with patch("langchain_core.runnables.base.RunnableSequence.ainvoke", mock_invoke):
-        # 3. Setup Service with DI (using MemorySaver for test isolation)
-        from contextlib import asynccontextmanager
-
-        from app.agents.roadmap.graph import get_graph as get_roadmap_graph
-        from app.core.graph_manager import GraphManager
+        # 3. Setup Service with test UoW
         from app.core.uow import AsyncUnitOfWork
-        from langgraph.checkpoint.memory import MemorySaver
-
-        @asynccontextmanager
-        async def memory_saver_factory():
-            yield MemorySaver()
 
         class TestUnitOfWork(AsyncUnitOfWork):
             def __init__(self, session):
@@ -83,25 +74,23 @@ async def test_roadmap_full_flow_persistence(db_session):
                 else:
                     await self.session.flush()
 
-        test_graph_manager = GraphManager(
-            get_roadmap_graph, "roadmap_agent", memory_saver_factory
-        )
-
         uow = TestUnitOfWork(db_session)
-        service = RoadmapStreamService(uow, test_graph_manager)
+        service = RoadmapStreamService(uow)
 
-        # 4. Run Stream
-        # Consume the generator
+        # 4. Run Stream (legacy one-shot flow)
         events = []
         async for event in service.stream_roadmap(request, user_id):
             events.append(event)
 
-        # 4. Verify Events (UI side)
-        assert len(events) >= 2  # Skeleton, Actions(M1) etc.
-        # Note: 3 might be too many if direct actions aren't yielded separately,
-        # but let's see what the events contain.
+        # 5. Verify Events
+        # HIL flow: skeleton event + actions event(s) + complete event
+        assert len(events) >= 2
 
-        # 5. Verify Persistence (DB side)
+        # Check we got skeleton event
+        skeleton_events = [e for e in events if "roadmap_skeleton" in e]
+        assert len(skeleton_events) == 1
+
+        # 6. Verify Persistence
         stmt = (
             select(Roadmap)
             .where(Roadmap.conversation_id == conv_id)
@@ -120,10 +109,95 @@ async def test_roadmap_full_flow_persistence(db_session):
         assert len(milestones) == 1
         assert milestones[0].label == "M1"
 
-        # Verify Actions saved
+        # Verify Actions saved (M1 actions + direct goal actions)
         assert len(actions) >= 1
-        # Note: direct actions might be 1 (from ACTIONS_RESP applied to Goal Actions logic?)
-        # Wait, 'generate_direct_actions' in graph calls chain.
-        # Our mock returns 'actions'. So it should generate goal actions too.
-        # And 'generate_actions' for M1 also returns 'actions'.
-        # So we expect M1 actions + Goal actions.
+
+
+@pytest.mark.asyncio
+async def test_roadmap_hil_flow_two_step(db_session):
+    """Test HIL flow: skeleton generation, then actions after approval."""
+    # 1. Setup
+    user_id = str(uuid4())
+    conv_id = str(uuid4())
+
+    conv = Conversation(id=conv_id, user_id=user_id, title="HIL Test Conv")
+    db_session.add(conv)
+    await db_session.commit()
+
+    request = GenerateRoadmapRequest(
+        conversation_id=conv_id,
+        goal="HIL Flow Goal",
+        why="Testing HIL",
+    )
+
+    mock_invoke = AsyncMock()
+    mock_invoke.return_value = {
+        "goal": {
+            "label": "HIL Flow Goal",
+            "details": "Details",
+            "milestones": [{"label": "M1", "details": "d1", "actions": []}],
+            "actions": [],
+        },
+        "actions": [{"label": "A1", "details": "ad1", "is_assumed": False}],
+    }
+
+    with patch("langchain_core.runnables.base.RunnableSequence.ainvoke", mock_invoke):
+        from app.core.uow import AsyncUnitOfWork
+
+        class TestUnitOfWork(AsyncUnitOfWork):
+            def __init__(self, session):
+                super().__init__()
+                self.session = session
+
+            async def __aenter__(self):
+                from app.repositories.conversation_repo import ConversationRepository
+                from app.repositories.roadmap_repo import RoadmapRepository
+
+                self.conversations = ConversationRepository(self.session)
+                self.roadmaps = RoadmapRepository(self.session)
+                return self
+
+            async def __aexit__(self, exc_type, exc_val, exc_tb):
+                if exc_type:
+                    await self.rollback()
+                else:
+                    await self.session.flush()
+
+        uow = TestUnitOfWork(db_session)
+        service = RoadmapStreamService(uow)
+
+        # Step 1: Generate skeleton
+        skeleton_events = []
+        thread_id = None
+        async for event in service.stream_skeleton(request, user_id):
+            skeleton_events.append(event)
+            # Extract thread_id from skeleton event
+            if "thread_id" in event:
+                import json
+
+                data_start = event.find("data: ") + 6
+                data = json.loads(event[data_start:].strip())
+                thread_id = data.get("thread_id")
+
+        assert len(skeleton_events) >= 1
+        assert thread_id is not None
+
+        # Step 2: Resume and generate actions
+        action_events = []
+        async for event in service.stream_actions(thread_id, user_id, request):
+            action_events.append(event)
+
+        # Should have actions + complete events
+        assert len(action_events) >= 1
+
+        # Verify persistence
+        stmt = (
+            select(Roadmap)
+            .where(Roadmap.conversation_id == conv_id)
+            .options(selectinload(Roadmap.nodes))
+        )
+        result = await db_session.execute(stmt)
+        roadmap = result.scalars().first()
+
+        assert roadmap is not None
+        assert roadmap.goal == "HIL Flow Goal"
