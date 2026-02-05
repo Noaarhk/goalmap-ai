@@ -10,6 +10,8 @@ import {
 } from "reactflow";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { computeTreeLayout } from "../features/visualization/utils/layoutEngine";
+import { apiClient } from "../services/apiClient";
 import type { RoadmapData } from "../types";
 
 interface StreamingMilestone {
@@ -56,10 +58,20 @@ interface RoadmapStore {
     addStreamingActions: (actions: StreamingAction[]) => void;
     resetStreaming: () => void;
     
+    // Layout Actions
+    recomputeLayout: () => void;
+
     // API Actions
     setHistory: (history: RoadmapData[]) => void;
     removeFromHistory: (id: string) => void;
     reset: () => void;
+
+    // Node Progress Actions
+    updateNodeProgress: (nodeId: string, progressDelta: number) => void;
+    refreshNodesFromRoadmap: () => void;
+
+    // Server Sync Actions
+    syncFromServer: (roadmapId: string) => Promise<boolean>;
 }
 
 export const useRoadmapStore = create<RoadmapStore>()(
@@ -132,6 +144,13 @@ export const useRoadmapStore = create<RoadmapStore>()(
                 streamingActions: []
             }),
 
+            recomputeLayout: () => {
+                const { roadmap } = get();
+                if (!roadmap) return;
+                const { nodes, edges } = computeTreeLayout(roadmap.nodes, roadmap.edges);
+                set({ nodes, edges });
+            },
+
             setHistory: (history) => set({ history }),
             removeFromHistory: (id) => set((state) => ({
                 history: state.history.filter((r) => r.id !== id)
@@ -147,15 +166,92 @@ export const useRoadmapStore = create<RoadmapStore>()(
                 streamingMilestones: [],
                 streamingActions: []
             }),
+
+            updateNodeProgress: (nodeId, progressDelta) => {
+                const { roadmap, nodes } = get();
+                if (!roadmap) return;
+
+                // Update roadmap data
+                const updatedNodes = roadmap.nodes.map((n) =>
+                    n.id === nodeId
+                        ? { ...n, progress: Math.min(100, (n.progress || 0) + progressDelta) }
+                        : n
+                );
+                const updatedRoadmap = { ...roadmap, nodes: updatedNodes };
+
+                // Update ReactFlow nodes data
+                const updatedFlowNodes = nodes.map((n) =>
+                    n.id === nodeId
+                        ? { ...n, data: { ...n.data, progress: Math.min(100, (n.data.progress || 0) + progressDelta) } }
+                        : n
+                );
+
+                set({ roadmap: updatedRoadmap, nodes: updatedFlowNodes });
+            },
+
+            refreshNodesFromRoadmap: () => {
+                const { roadmap, nodes } = get();
+                if (!roadmap) return;
+
+                // Sync ReactFlow nodes with roadmap data
+                const updatedFlowNodes = nodes.map((n) => {
+                    const roadmapNode = roadmap.nodes.find((rn) => rn.id === n.id);
+                    if (roadmapNode) {
+                        return { ...n, data: { ...n.data, progress: roadmapNode.progress || 0 } };
+                    }
+                    return n;
+                });
+
+                set({ nodes: updatedFlowNodes });
+            },
+
+            syncFromServer: async (roadmapId: string) => {
+                try {
+                    console.log("[RoadmapStore] Syncing from server:", roadmapId);
+                    const serverRoadmap = await apiClient.getRoadmap(roadmapId);
+                    
+                    // Compute layout for the server data
+                    const { nodes, edges } = computeTreeLayout(serverRoadmap.nodes, serverRoadmap.edges);
+                    
+                    // Update store with server data
+                    const { history } = get();
+                    const updatedHistory = history.map((r) =>
+                        r.id === roadmapId ? serverRoadmap : r
+                    );
+                    
+                    set({
+                        roadmap: serverRoadmap,
+                        nodes,
+                        edges,
+                        history: updatedHistory,
+                    });
+                    
+                    console.log("[RoadmapStore] Sync complete, nodes updated:", serverRoadmap.nodes.length);
+                    return true;
+                } catch (error) {
+                    console.error("[RoadmapStore] Sync failed:", error);
+                    return false;
+                }
+            },
         }),
         {
             name: "roadmap-storage",
-            partialize: (state) => ({ 
+            version: 1,
+            migrate: (persisted: any) => {
+                // Migrate old "roadmapNode" type to "roadmapCard"
+                if (persisted?.nodes) {
+                    persisted.nodes = persisted.nodes.map((n: any) =>
+                        n.type === "roadmapNode" ? { ...n, type: "roadmapCard" } : n
+                    );
+                }
+                return persisted;
+            },
+            partialize: (state) => ({
                 roadmap: state.roadmap,
-                nodes: state.nodes, 
+                nodes: state.nodes,
                 edges: state.edges,
                 history: state.history
-            }), // Persist roadmap data and history
+            }),
         }
     )
 );

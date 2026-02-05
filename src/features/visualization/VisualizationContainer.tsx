@@ -3,12 +3,13 @@ import {
 	ChevronUp,
 	Download,
 	Info,
+	LayoutGrid,
 	Loader2,
 	LogOut,
 	Swords,
 	X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
 	Background,
 	Controls,
@@ -19,10 +20,18 @@ import "reactflow/dist/style.css";
 import { useAppStore, useAuthStore, useRoadmapStore } from "../../stores";
 import { AppState } from "../../types";
 
-import RoadmapNodeComponent from "./components/RoadmapNode";
+import { CheckInPanel } from "./components/CheckInPanel";
+import RoadmapCardNode from "./components/RoadmapCardNode";
 
 const nodeTypes = {
-	roadmapNode: RoadmapNodeComponent,
+	roadmapCard: RoadmapCardNode,
+} as const;
+
+// Check if string is a valid UUID (not a temp ID like "rm-xxx")
+const isValidUUID = (id: string): boolean => {
+	const uuidRegex =
+		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+	return uuidRegex.test(id);
 };
 
 export function VisualizationContainer() {
@@ -35,9 +44,22 @@ export function VisualizationContainer() {
 		onEdgesChange,
 		selectedNodeId,
 		setSelectedNodeId,
+		syncFromServer,
 	} = useRoadmapStore();
 
+	const [isSyncing, setIsSyncing] = useState(false);
 	const [nodeChatInput, setNodeChatInput] = useState("");
+	const hasSynced = useRef(false);
+
+	// Sync roadmap data from server on mount (for valid UUID roadmaps)
+	useEffect(() => {
+		const roadmapId = roadmap?.id;
+		if (roadmapId && isValidUUID(roadmapId) && !hasSynced.current) {
+			hasSynced.current = true;
+			setIsSyncing(true);
+			syncFromServer(roadmapId).finally(() => setIsSyncing(false));
+		}
+	}, [roadmap?.id, syncFromServer]);
 	const [nodeChatResponse, setNodeChatResponse] = useState<string | null>(null);
 	const [isNodeChatting, setIsNodeChatting] = useState(false);
 	const [isQuestPanelExpanded, setIsQuestPanelExpanded] = useState(false);
@@ -69,9 +91,9 @@ export function VisualizationContainer() {
 	if (!roadmap) return null;
 
 	return (
-		<div className="flex w-full h-full relative">
+		<div className="flex w-full h-screen relative">
 			<ReactFlowProvider>
-				<div className="flex-1 h-full bg-[#101722]">
+				<div className="flex-1 h-full min-h-0 bg-[#101722]">
 					<ReactFlow
 						nodes={flowNodes}
 						edges={flowEdges}
@@ -91,9 +113,17 @@ export function VisualizationContainer() {
 							<div className="p-6">
 								<div className="flex items-start justify-between gap-4">
 									<div>
-										<h3 className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-1">
-											Active Quest
-										</h3>
+										<div className="flex items-center gap-2 mb-1">
+											<h3 className="text-[10px] font-black text-blue-500 uppercase tracking-widest">
+												Active Quest
+											</h3>
+											{isSyncing && (
+												<div className="flex items-center gap-1 text-[9px] text-emerald-400">
+													<Loader2 className="w-3 h-3 animate-spin" />
+													<span>Syncing...</span>
+												</div>
+											)}
+										</div>
 										<h2 className="text-xl font-black text-white leading-tight">
 											{roadmap.title}
 										</h2>
@@ -127,6 +157,14 @@ export function VisualizationContainer() {
 							<button
 								type="button"
 								className="p-3 bg-slate-800/80 border border-slate-700 rounded-xl hover:bg-slate-700 text-slate-300 transition-colors"
+								title="Auto-arrange nodes"
+								onClick={() => useRoadmapStore.getState().recomputeLayout()}
+							>
+								<LayoutGrid className="w-5 h-5" />
+							</button>
+							<button
+								type="button"
+								className="p-3 bg-slate-800/80 border border-slate-700 rounded-xl hover:bg-slate-700 text-slate-300 transition-colors"
 								title="Download Roadmap"
 							>
 								<Download className="w-5 h-5" />
@@ -146,6 +184,27 @@ export function VisualizationContainer() {
 							>
 								<X className="w-4 h-4" /> Exit
 							</button>
+						</Panel>
+
+						{/* Daily Check-in Panel */}
+						<Panel position="bottom-center" className="mb-10 w-full max-w-xl">
+							{isValidUUID(roadmap.id) ? (
+								<CheckInPanel
+									roadmapId={roadmap.id}
+									nodes={roadmap.nodes}
+									onUpdatesConfirmed={(updatedNodeIds) => {
+										console.log("Updates confirmed for nodes:", updatedNodeIds);
+										useRoadmapStore.getState().refreshNodesFromRoadmap();
+									}}
+								/>
+							) : (
+								<div className="bg-[#1a2436]/95 backdrop-blur-md border border-slate-700 p-4 rounded-3xl text-center">
+									<p className="text-xs text-slate-500">
+										Check-in not available for this roadmap. Generate a new
+										roadmap to enable progress tracking.
+									</p>
+								</div>
+							)}
 						</Panel>
 					</ReactFlow>
 				</div>
@@ -179,7 +238,7 @@ export function VisualizationContainer() {
 						</div>
 
 						<div className="flex-1 overflow-y-auto p-8 space-y-6">
-							{selectedNode.is_assumed && (
+							{selectedNode.isAssumed && (
 								<div className="bg-purple-900/20 border border-purple-500/30 rounded-2xl p-4 flex gap-3">
 									<Info className="w-5 h-5 text-purple-400 shrink-0 mt-0.5" />
 									<p className="text-xs text-purple-200 leading-relaxed italic">
