@@ -70,3 +70,9 @@ class RoadmapDirectActionsEvent(BaseModel):
     """Event sent when direct actions for the goal are generated."""
 
     actions: list[ActionNode]
+
+
+class RoadmapCompleteEvent(BaseModel):
+    """Event sent when roadmap generation and persistence is complete."""
+
+    roadmap_id: str  # Server-side UUID for the roadmap

@@ -21,6 +21,7 @@ from app.schemas.api.roadmaps import GenerateRoadmapRequest
 from app.schemas.events.base import ErrorEventData
 from app.schemas.events.roadmap import (
     RoadmapActionsEvent,
+    RoadmapCompleteEvent,
     RoadmapDirectActionsEvent,
     RoadmapSkeletonEvent,
 )
@@ -169,10 +170,11 @@ class RoadmapStreamService:
             return
 
         goal_node = output.get("goal_node")
+        roadmap_id = None
 
         # Persist roadmap (Always persist if we have a valid goal_node at this stage)
         if user_id and goal_node:
-            await self._persist_roadmap(request, goal_node, user_id)
+            roadmap_id = await self._persist_roadmap(request, goal_node, user_id)
         else:
             logger.warning(
                 "[Stream] Skipping persistence: No user_id or goal_node missing"
@@ -189,13 +191,18 @@ class RoadmapStreamService:
                 evt = RoadmapDirectActionsEvent(actions=actions_view)
                 yield f"event: roadmap_direct_actions\ndata: {evt.model_dump_json()}\n\n"
 
+        # Yield roadmap_complete event with server UUID
+        if roadmap_id:
+            complete_evt = RoadmapCompleteEvent(roadmap_id=str(roadmap_id))
+            yield f"event: roadmap_complete\ndata: {complete_evt.model_dump_json()}\n\n"
+
     async def _persist_roadmap(
         self,
         request: GenerateRoadmapRequest,
         goal_node: any,
         user_id: str,
-    ) -> None:
-        """Persist roadmap to database."""
+    ) -> UUID | None:
+        """Persist roadmap to database and return roadmap ID."""
         try:
             logger.info(f"Persisting roadmap for user {user_id}")
             goal_dict = (
@@ -244,5 +251,7 @@ class RoadmapStreamService:
                     )
 
                 logger.info(f"Successfully persisted roadmap: {roadmap.id}")
+                return roadmap.id
         except Exception as e:
             logger.error(f"Failed to persist roadmap: {e}", exc_info=True)
+            return None
