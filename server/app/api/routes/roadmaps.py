@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from app.api.dependencies import CurrentUser, get_current_user, get_optional_user
+from app.api.dependencies import CurrentUser, get_current_user
 from app.core.database import get_db
 from app.repositories.roadmap_repo import RoadmapRepository
 from app.schemas.api_schemas import RoadmapCreate, RoadmapResponse, RoadmapUpdate
@@ -20,11 +20,11 @@ async def create_roadmap(
     db: AsyncSession = Depends(get_db),
 ):
     repo = RoadmapRepository(db)
-    roadmap = await repo.create(
+    roadmap = await repo.create_with_nodes(
         user_id=user.user_id,
         title=payload.title,
         goal=payload.goal,
-        milestones=payload.milestones,
+        milestones_data=payload.milestones,
         conversation_id=payload.conversation_id,
     )
     return roadmap
@@ -71,7 +71,19 @@ async def update_roadmap(
         raise HTTPException(status_code=403, detail="Not authorized")
 
     update_data = payload.model_dump(exclude_unset=True)
-    roadmap = await repo.update(roadmap, **update_data)
+
+    # Handle milestones update separately (replace all nodes)
+    milestones_data = update_data.pop("milestones", None)
+
+    if update_data:
+        roadmap = await repo.update(roadmap, **update_data)
+
+    if milestones_data is not None:
+        # Full replacement of nodes logic would go here
+        # For now, we will re-implement this in the repository or service
+        # But to avoid breaking, we should probably implement a replace_nodes method
+        roadmap = await repo.update_with_nodes(roadmap.id, milestones_data)
+
     return roadmap
 
 
@@ -94,7 +106,7 @@ async def delete_roadmap(
 @router.post("/stream")
 async def stream_roadmap(
     request: GenerateRoadmapRequest,
-    user: CurrentUser | None = Depends(get_optional_user),
+    user: CurrentUser = Depends(get_current_user),
 ):
     """
     Stream Roadmap generation via SSE.

@@ -27,7 +27,7 @@ async def create_conversation(
     # Optionally initialize with a system message or user message if provided
     # For now, just create empty or with title
     conversation = await repo.create(
-        user_id=user.user_id, title=payload.title or "New Quest", messages=[]
+        user_id=user.user_id, title=payload.title or "New Quest"
     )
     return conversation
 
@@ -40,7 +40,7 @@ async def get_conversations(
     limit: int = 100,
 ):
     repo = ConversationRepository(db)
-    return await repo.get_by_user_id(user.user_id)
+    return await repo.get_by_user_with_messages_and_blueprint(user.user_id)
 
 
 @router.get("/{conversation_id}", response_model=ConversationResponse)
@@ -50,7 +50,7 @@ async def get_conversation(
     db: AsyncSession = Depends(get_db),
 ):
     repo = ConversationRepository(db)
-    conversation = await repo.get(conversation_id)
+    conversation = await repo.get_with_messages_and_blueprint(conversation_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
     if conversation.user_id != user.user_id:
@@ -66,6 +66,7 @@ async def update_conversation(
     db: AsyncSession = Depends(get_db),
 ):
     repo = ConversationRepository(db)
+    # Lazy load is sufficient for ownership check
     conversation = await repo.get(conversation_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -73,6 +74,7 @@ async def update_conversation(
         raise HTTPException(status_code=403, detail="Not authorized")
 
     update_data = payload.model_dump(exclude_unset=True)
+    # Repo update method returns eager-loaded object
     conversation = await repo.update(conversation, **update_data)
     return conversation
 
@@ -84,6 +86,7 @@ async def delete_conversation(
     db: AsyncSession = Depends(get_db),
 ):
     repo = ConversationRepository(db)
+    # Lazy load is sufficient for delete
     conversation = await repo.get(conversation_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
