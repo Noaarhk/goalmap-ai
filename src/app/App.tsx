@@ -9,7 +9,7 @@ import { AppState } from "../types";
 
 function App() {
 	const { appState } = useAppStore();
-	const { roadmap } = useRoadmapStore();
+	const { roadmap, approveAndContinue } = useRoadmapStore();
 	const { user, isLoading, isInitialized, initialize } = useAuthStore();
 
 	// Initialize auth on mount
@@ -31,9 +31,15 @@ function App() {
 		return <AuthContainer />;
 	}
 
+	const handleApprove = async (modifiedMilestones?: { id: string; label: string; is_new?: boolean }[]) => {
+		await approveAndContinue(modifiedMilestones);
+	};
+
 	return (
 		<div className="flex h-screen w-screen bg-[#101722] overflow-hidden text-slate-100">
-			{appState === AppState.TRANSITION && <TransitionView />}
+			{appState === AppState.TRANSITION && (
+				<TransitionView onApprove={handleApprove} />
+			)}
 
 			{appState === AppState.DISCOVERY && <DiscoveryContainer />}
 

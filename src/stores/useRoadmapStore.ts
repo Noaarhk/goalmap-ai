@@ -39,6 +39,12 @@ interface RoadmapStore {
     streamingStep: number;
     streamingMilestones: StreamingMilestone[];
     streamingActions: StreamingAction[];
+    
+    // HIL (Human-in-the-Loop) state
+    streamingThreadId: string | null;
+    isAwaitingApproval: boolean;
+    skeletonData: any | null;  // Raw skeleton for resume
+    approvalCallback: ((modifiedMilestones?: { id: string; label: string; is_new?: boolean }[]) => Promise<void>) | null;
 
     // Actions
     setRoadmap: (data: RoadmapData) => void;
@@ -57,6 +63,11 @@ interface RoadmapStore {
     setStreamingMilestones: (milestones: StreamingMilestone[]) => void;
     addStreamingActions: (actions: StreamingAction[]) => void;
     resetStreaming: () => void;
+    
+    // HIL Actions
+    setAwaitingApproval: (threadId: string, skeleton: any, callback: (modifiedMilestones?: { id: string; label: string; is_new?: boolean }[]) => Promise<void>) => void;
+    approveAndContinue: (modifiedMilestones?: { id: string; label: string; is_new?: boolean }[]) => Promise<void>;
+    clearAwaitingApproval: () => void;
     
     // Layout Actions
     recomputeLayout: () => void;
@@ -87,6 +98,10 @@ export const useRoadmapStore = create<RoadmapStore>()(
             streamingStep: 0,
             streamingMilestones: [],
             streamingActions: [],
+            streamingThreadId: null,
+            isAwaitingApproval: false,
+            skeletonData: null,
+            approvalCallback: null,
 
             setRoadmap: (roadmap) => {
                 const { history } = get();
@@ -141,7 +156,32 @@ export const useRoadmapStore = create<RoadmapStore>()(
                 streamingStatus: null,
                 streamingStep: 0,
                 streamingMilestones: [],
-                streamingActions: []
+                streamingActions: [],
+                streamingThreadId: null,
+                isAwaitingApproval: false,
+                skeletonData: null,
+                approvalCallback: null,
+            }),
+            
+            // HIL Actions
+            setAwaitingApproval: (threadId, skeleton, callback) => set({
+                streamingThreadId: threadId,
+                isAwaitingApproval: true,
+                skeletonData: skeleton,
+                approvalCallback: callback,
+                streamingStep: 2,  // Pause at Design step
+                streamingStatus: "Review your roadmap structure",
+            }),
+            approveAndContinue: async (modifiedMilestones) => {
+                const { approvalCallback } = get();
+                if (approvalCallback) {
+                    set({ isAwaitingApproval: false });
+                    await approvalCallback(modifiedMilestones);
+                }
+            },
+            clearAwaitingApproval: () => set({
+                isAwaitingApproval: false,
+                approvalCallback: null,
             }),
 
             recomputeLayout: () => {
@@ -163,8 +203,13 @@ export const useRoadmapStore = create<RoadmapStore>()(
                 selectedNodeId: null,
                 streamingGoal: null,
                 streamingStatus: null,
+                streamingStep: 0,
                 streamingMilestones: [],
-                streamingActions: []
+                streamingActions: [],
+                streamingThreadId: null,
+                isAwaitingApproval: false,
+                skeletonData: null,
+                approvalCallback: null,
             }),
 
             updateNodeProgress: (nodeId, progressDelta) => {

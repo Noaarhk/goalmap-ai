@@ -73,7 +73,22 @@ export interface ChatResponseEvent {
 }
 
 export interface RoadmapResponseEvent {
-	type: "roadmap_skeleton" | "roadmap_actions" | "roadmap_direct_actions" | "roadmap_complete" | "error";
+	type: "roadmap_skeleton" | "roadmap_actions" | "roadmap_complete" | "error";
+	data: any;
+}
+
+export interface SkeletonResponseEvent {
+	type: "roadmap_skeleton" | "error";
+	data: {
+		goal?: any;
+		thread_id?: string;
+		code?: string;
+		message?: string;
+	};
+}
+
+export interface ActionsResponseEvent {
+	type: "roadmap_actions" | "roadmap_complete" | "error";
 	data: any;
 }
 
@@ -228,6 +243,50 @@ export const apiClient = {
 				obstacles: blueprint.obstacles,
 				resources: blueprint.resources,
 				conversation_id: chatId,
+			},
+			onEvent,
+		);
+	},
+
+	// HIL Step 1: Generate skeleton (milestones only)
+	streamSkeleton: async (
+		blueprint: BlueprintData,
+		chatId: string,
+		onEvent: EventHandler<SkeletonResponseEvent>,
+	) => {
+		await streamRequest(
+			`${API_BASE}/v1/roadmaps/stream/skeleton`,
+			{
+				goal: blueprint.goal,
+				why: blueprint.why,
+				timeline: blueprint.timeline,
+				obstacles: blueprint.obstacles,
+				resources: blueprint.resources,
+				conversation_id: chatId,
+			},
+			onEvent,
+		);
+	},
+
+	// HIL Step 2: Resume and generate actions
+	streamActions: async (
+		threadId: string,
+		blueprint: BlueprintData,
+		chatId: string,
+		onEvent: EventHandler<ActionsResponseEvent>,
+		modifiedMilestones?: { id: string; label: string; is_new?: boolean }[],
+	) => {
+		await streamRequest(
+			`${API_BASE}/v1/roadmaps/stream/actions`,
+			{
+				thread_id: threadId,
+				goal: blueprint.goal,
+				why: blueprint.why,
+				timeline: blueprint.timeline,
+				obstacles: blueprint.obstacles,
+				resources: blueprint.resources,
+				conversation_id: chatId,
+				modified_milestones: modifiedMilestones || null,
 			},
 			onEvent,
 		);

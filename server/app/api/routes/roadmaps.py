@@ -10,6 +10,7 @@ from app.core.exceptions import AppException, NotFoundException
 from app.core.uow import AsyncUnitOfWork
 from app.schemas.api.roadmaps import (
     GenerateRoadmapRequest,
+    ResumeRoadmapRequest,
     RoadmapCreate,
     RoadmapResponse,
     RoadmapUpdate,
@@ -115,12 +116,67 @@ async def stream_roadmap(
     service: RoadmapStreamService = Depends(get_roadmap_service),
 ):
     """
-    Stream Roadmap generation via SSE.
+    Legacy: Stream full Roadmap generation via SSE (no HIL).
 
-    Generates milestones and tasks progressively.
+    For backward compatibility. Use /stream/skeleton + /stream/actions for HIL.
     """
-    user_id = user.user_id if user else None
     return StreamingResponse(
-        service.stream_roadmap(request, user_id),
+        service.stream_roadmap(request, user.user_id),
+        media_type="text/event-stream",
+    )
+
+
+@router.post("/stream/skeleton")
+async def stream_skeleton(
+    request: GenerateRoadmapRequest,
+    user: CurrentUser = Depends(get_current_user),
+    service: RoadmapStreamService = Depends(get_roadmap_service),
+):
+    """
+    HIL Step 1: Generate roadmap skeleton (milestones only).
+
+    Returns skeleton structure for user review.
+    The response includes a thread_id for resuming with /stream/actions.
+    """
+    return StreamingResponse(
+        service.stream_skeleton(request, user.user_id),
+        media_type="text/event-stream",
+    )
+
+
+@router.post("/stream/actions")
+async def stream_actions(
+    request: ResumeRoadmapRequest,
+    user: CurrentUser = Depends(get_current_user),
+    service: RoadmapStreamService = Depends(get_roadmap_service),
+):
+    """
+    HIL Step 2: Resume and generate all actions.
+
+    Call after user has approved the skeleton from /stream/skeleton.
+    Requires thread_id from the skeleton response.
+    
+    If modified_milestones is provided, generates actions based on user's edits.
+    Otherwise, resumes from checkpoint with original skeleton.
+    """
+    # Build GenerateRoadmapRequest for persistence if fields provided
+    persist_request = None
+    if request.goal:
+        persist_request = GenerateRoadmapRequest(
+            conversation_id=request.conversation_id or "",
+            goal=request.goal,
+            why=request.why or "",
+            timeline=request.timeline,
+            obstacles=request.obstacles,
+            resources=request.resources,
+        )
+
+    return StreamingResponse(
+        service.stream_actions(
+            request.thread_id,
+            user.user_id,
+            persist_request,
+            request.modified_milestones,
+        ),
         media_type="text/event-stream",
     )

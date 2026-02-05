@@ -57,18 +57,13 @@ class RoadmapSkeletonEvent(BaseModel):
     """Event sent when skeleton (goal + milestones) is planned."""
 
     goal: GoalNode  # Contains milestones (actions empty)
+    thread_id: str | None = None  # For HIL resume
 
 
 class RoadmapActionsEvent(BaseModel):
-    """Event sent when actions for a specific milestone are generated."""
+    """Event sent when actions are generated."""
 
-    milestone_id: str
-    actions: list[ActionNode]
-
-
-class RoadmapDirectActionsEvent(BaseModel):
-    """Event sent when direct actions for the goal are generated."""
-
+    milestone_id: str | None  # None = direct goal actions
     actions: list[ActionNode]
 
 

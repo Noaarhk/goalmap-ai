@@ -52,6 +52,7 @@ export function DiscoveryContainer() {
 		setStreamingMilestones,
 		addStreamingActions,
 		resetStreaming,
+		setAwaitingApproval,
 	} = useRoadmapStore();
 
 	const [showHistory, setShowHistory] = useState(false);
@@ -271,12 +272,12 @@ export function DiscoveryContainer() {
 		}
 
 		setAppState(AppState.TRANSITION);
-		resetStreaming(); // Reset streaming state for fresh TransitionView
+		resetStreaming();
 
-		// Optimize: Set goal immediately for TransitionView
+		// Set initial state for TransitionView
 		setStreamingGoal(blueprint.goal || "New Roadmap");
 		setStreamingStatus("Analyzing your goal...");
-		setStreamingStep(1); // Step 1: Goal Analysis
+		setStreamingStep(1);
 
 		// Local accumulator for the streaming session
 		const currentRoadmap: RoadmapData = {
@@ -290,11 +291,8 @@ export function DiscoveryContainer() {
 		};
 
 		const updateView = () => {
-			// Update store and trigger visualization refresh
-			setRoadmap({ ...currentRoadmap }); // Spread to create new reference
+			setRoadmap({ ...currentRoadmap });
 			regenerateFlow({ ...currentRoadmap });
-
-			// Persist the roadmap via API (already done in stream, but we might want to refresh list)
 			setTimeout(() => {
 				apiClient.getRoadmaps().then((roadmaps) => {
 					useRoadmapStore.getState().setHistory(roadmaps);
@@ -302,28 +300,147 @@ export function DiscoveryContainer() {
 			}, 1000);
 		};
 
+		// --- HIL Step 2: Continue after approval ---
+		const continueWithActions = async (
+			threadId: string,
+			modifiedMilestones?: { id: string; label: string; is_new?: boolean }[],
+		) => {
+			setStreamingStatus("Planning actions...");
+			setStreamingStep(3);
+
+			// If milestones were modified, update the local state and nodes
+			if (modifiedMilestones) {
+				console.log("[Roadmap] Using modified milestones:", modifiedMilestones);
+				
+				// Rebuild milestone nodes from modified data
+				const goalNode = currentRoadmap.nodes.find(n => n.type === "goal");
+				if (goalNode) {
+					// Remove old milestones
+					currentRoadmap.nodes = currentRoadmap.nodes.filter(n => n.type !== "milestone");
+					currentRoadmap.edges = currentRoadmap.edges.filter(e => !e.source.startsWith("e-") || e.source === goalNode.id);
+					
+					// Add modified milestones
+					const milestoneNodes = modifiedMilestones.map((m, idx) => ({
+						id: m.id,
+						type: "milestone" as const,
+						label: m.label,
+						isAssumed: false,
+						details: null,
+					}));
+					
+					const milestoneEdges = modifiedMilestones.map(m => ({
+						id: `e-${goalNode.id}-${m.id}`,
+						source: goalNode.id,
+						target: m.id,
+					}));
+					
+					currentRoadmap.nodes = [goalNode, ...milestoneNodes];
+					currentRoadmap.edges = milestoneEdges;
+				}
+
+				// Update streaming milestones for UI
+				setStreamingMilestones(
+					modifiedMilestones.map(m => ({
+						id: m.id,
+						label: m.label,
+						status: "pending" as const,
+					})),
+				);
+			}
+
+			try {
+				await apiClient.streamActions(
+					threadId,
+					blueprint,
+					currentConversationId,
+					(event) => {
+						if (event.type === "roadmap_actions") {
+							const milestoneId = event.data.milestone_id;
+							const actions = event.data.actions;
+
+							// Update streaming state
+							addStreamingActions(
+								actions.map((a: any) => ({
+									milestoneId: milestoneId || "goal",
+									id: a.id,
+									label: a.label,
+								})),
+							);
+
+							// Update milestone status if applicable
+							if (milestoneId) {
+								const { streamingMilestones } = useRoadmapStore.getState();
+								setStreamingMilestones(
+									streamingMilestones.map((m) =>
+										m.id === milestoneId ? { ...m, status: "done" as const } : m,
+									),
+								);
+							}
+
+							// Add task nodes
+							const parentId = milestoneId || currentRoadmap.nodes.find(n => n.type === "goal")?.id;
+							const taskNodes = actions.map((a: any) => ({
+								id: a.id,
+								type: "task" as const,
+								label: a.label,
+								isAssumed: false,
+								details: a.details || null,
+							}));
+
+							const taskEdges = taskNodes.map((a: any) => ({
+								id: `e-${parentId}-${a.id}`,
+								source: parentId,
+								target: a.id,
+							}));
+
+							currentRoadmap.nodes.push(...taskNodes);
+							currentRoadmap.edges.push(...taskEdges);
+						} else if (event.type === "roadmap_complete") {
+							const { roadmap_id } = event.data;
+							console.log("[Roadmap] Server ID received:", roadmap_id);
+							currentRoadmap.id = roadmap_id;
+							setStreamingStatus("Roadmap ready!");
+							setStreamingStep(4);
+							updateView();
+						} else if (event.type === "error") {
+							console.error("Actions stream error:", event.data);
+						}
+					},
+					modifiedMilestones,  // Pass to API
+				);
+
+				if (currentRoadmap.nodes.length > 0) {
+					updateView();
+				}
+			} catch (e) {
+				console.error(e);
+				alert("Failed to generate actions. Please try again.");
+				setAppState(AppState.DISCOVERY);
+			}
+		};
+
+		// --- HIL Step 1: Generate skeleton ---
 		try {
-			await apiClient.streamRoadmap(
+			await apiClient.streamSkeleton(
 				blueprint,
 				currentConversationId,
 				(event) => {
 					if (event.type === "roadmap_skeleton") {
-						// 1. Skeleton: Goal with milestones (no edges from server)
-						const { goal } = event.data;
+						const { goal, thread_id } = event.data;
 
-						// Update streaming state for TransitionView
+						// Update streaming state
 						setStreamingGoal(goal.label);
 						setStreamingStatus("Designing milestones...");
-						setStreamingStep(2); // Step 2: Milestone Design
+						setStreamingStep(2);
 						setStreamingMilestones(
 							goal.milestones.map((m: any) => ({
 								id: m.id,
 								label: m.label,
-								status: "pending" as const,
+								status: "done" as const,
 							})),
 						);
 
-						// Create goal node
+						// Build skeleton nodes
 						const goalNode = {
 							id: goal.id,
 							type: "goal" as const,
@@ -332,7 +449,6 @@ export function DiscoveryContainer() {
 							details: goal.details || null,
 						};
 
-						// Create milestone nodes
 						const milestoneNodes = goal.milestones.map((m: any) => ({
 							id: m.id,
 							type: "milestone" as const,
@@ -341,7 +457,6 @@ export function DiscoveryContainer() {
 							details: m.details || null,
 						}));
 
-						// Generate edges dynamically (goal -> milestones)
 						const milestoneEdges = goal.milestones.map((m: any) => ({
 							id: `e-${goal.id}-${m.id}`,
 							source: goal.id,
@@ -351,96 +466,20 @@ export function DiscoveryContainer() {
 						currentRoadmap.nodes = [goalNode, ...milestoneNodes];
 						currentRoadmap.edges = milestoneEdges;
 						currentRoadmap.summary = goal.details || "Quest roadmap";
-						// Don't call updateView() here - stay in TransitionView to show streaming progress
-					} else if (event.type === "roadmap_actions") {
-						// 2. Expansion: Add actions to a milestone
-						const milestoneId = event.data.milestone_id;
-						const actions = event.data.actions;
 
-						// Update streaming state for TransitionView
-						if (useRoadmapStore.getState().streamingStep < 3) {
-							setStreamingStep(3); // Step 3: Action Planning (only set once)
+						// Set approval state with callback
+						if (thread_id) {
+							setAwaitingApproval(
+								thread_id,
+								goal,
+								(modifiedMilestones) => continueWithActions(thread_id, modifiedMilestones),
+							);
 						}
-						setStreamingStatus(`Planning actions for milestone...`);
-						addStreamingActions(
-							actions.map((a: any) => ({
-								milestoneId,
-								id: a.id,
-								label: a.label,
-							})),
-						);
-
-						// Update milestone status to done
-						const { streamingMilestones } = useRoadmapStore.getState();
-						setStreamingMilestones(
-							streamingMilestones.map((m) =>
-								m.id === milestoneId ? { ...m, status: "done" as const } : m,
-							),
-						);
-
-						const taskNodes = actions.map((a: any) => ({
-							id: a.id,
-							type: "task" as const,
-							label: a.label,
-							isAssumed: false,
-							details: a.details || null,
-						}));
-
-						const taskEdges = taskNodes.map((a: any) => ({
-							id: `e-${milestoneId}-${a.id}`,
-							source: milestoneId,
-							target: a.id,
-						}));
-
-						currentRoadmap.nodes.push(...taskNodes);
-						currentRoadmap.edges.push(...taskEdges);
-						// Don't call updateView() here - stay in TransitionView to show streaming progress
-					} else if (event.type === "roadmap_direct_actions") {
-						setStreamingStatus("Finalizing roadmap...");
-						setStreamingStep(4); // Step 4: Finalizing
-						// 3. Direct Tasks: Add tasks directly to goal
-						const actions = event.data.actions;
-						const goalNode = currentRoadmap.nodes.find(
-							(n) => n.type === "goal",
-						);
-						if (goalNode && actions.length > 0) {
-							const taskNodes = actions.map((a: any) => ({
-								id: a.id,
-								type: "task" as const,
-								label: a.label,
-								isAssumed: false,
-								details: a.details || null,
-								startDate: a.start_date || a.startDate,
-								endDate: a.end_date || a.endDate,
-								parentId: a.parent_id || a.parentId,
-							}));
-
-							const taskEdges = taskNodes.map((a: any) => ({
-								id: `e-${goalNode.id}-${a.id}`,
-								source: goalNode.id,
-								target: a.id,
-							}));
-
-							currentRoadmap.nodes.push(...taskNodes);
-							currentRoadmap.edges.push(...taskEdges);
-							updateView();
-						}
-					} else if (event.type === "roadmap_complete") {
-						// 4. Complete: Replace temporary ID with server UUID
-						const { roadmap_id } = event.data;
-						console.log("[Roadmap] Server ID received, replacing temp ID:", currentRoadmap.id, "→", roadmap_id);
-						currentRoadmap.id = roadmap_id;
-						updateView();
 					} else if (event.type === "error") {
-						console.error("Roadmap stream error:", event.data);
+						console.error("Skeleton stream error:", event.data);
 					}
 				},
 			);
-
-			// Fallback: If stream completed but direct_actions didn't fire (edge case)
-			if (currentRoadmap.nodes.length > 0) {
-				updateView();
-			}
 		} catch (e) {
 			console.error(e);
 			alert("The Oracle's vision is clouded. Please try again.");

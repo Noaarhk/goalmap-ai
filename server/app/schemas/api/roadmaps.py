@@ -53,3 +53,27 @@ class GenerateRoadmapRequest(BaseModel):
     timeline: str | None = None
     obstacles: str | None = None
     resources: str | None = None
+
+
+class ModifiedMilestone(BaseModel):
+    """User-modified milestone from the review screen."""
+
+    id: str
+    label: str
+    details: str | None = None
+    is_new: bool = False  # True if user added this milestone
+
+
+class ResumeRoadmapRequest(BaseModel):
+    """Request to resume roadmap generation after skeleton approval."""
+
+    thread_id: str
+    conversation_id: str | None = None
+    goal: str | None = None  # For persistence
+    why: str | None = None
+    timeline: str | None = None
+    obstacles: str | None = None
+    resources: str | None = None
+    
+    # User modifications from review screen
+    modified_milestones: list[ModifiedMilestone] | None = None
