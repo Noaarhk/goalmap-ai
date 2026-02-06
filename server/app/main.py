@@ -34,7 +34,7 @@ async def app_exception_handler(request: Request, exc: AppException):
 _cors_origins = (
     [str(origin) for origin in settings.BACKEND_CORS_ORIGINS]
     if settings.BACKEND_CORS_ORIGINS
-    else ["*"] if settings.is_dev else []
+    else ["*"] if settings.is_dev else ["https://goalmap-ai.vercel.app"]
 )
 app.add_middleware(
     CORSMiddleware,

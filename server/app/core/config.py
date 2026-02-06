@@ -20,12 +20,12 @@ class Settings(BaseSettings):
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod
-    def assemble_cors_origins(cls, v: str | list[str]) -> list[str]:
-        if isinstance(v, str) and not v.startswith("["):
-            return [i.strip() for i in v.split(",")]
-        elif isinstance(v, (list, str)):
-            return v
-        raise ValueError(v)
+    def assemble_cors_origins(cls, v: str | list[str] | None) -> list[str]:
+        if not v:
+            return []
+        if isinstance(v, str):
+            return [i.strip() for i in v.split(",") if i.strip()]
+        return v
 
     # Postgres
     POSTGRES_SERVER: str = "localhost"
@@ -62,6 +62,7 @@ class Settings(BaseSettings):
             "../.env",
             "../.env.local",
             f".env.{os.getenv('APP_ENV', 'development')}",
+            f"../.env.{os.getenv('APP_ENV', 'development')}",
         ],
         env_file_encoding="utf-8",
         case_sensitive=True,
