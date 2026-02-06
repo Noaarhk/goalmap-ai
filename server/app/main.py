@@ -12,6 +12,8 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     description="LangGraph-powered backend for GoalMap AI",
     version=settings.VERSION,
+    docs_url="/docs" if settings.is_dev else None,
+    redoc_url="/redoc" if settings.is_dev else None,
 )
 
 
@@ -29,11 +31,14 @@ async def app_exception_handler(request: Request, exc: AppException):
 
 
 # CORS configuration
+_cors_origins = (
+    [str(origin) for origin in settings.BACKEND_CORS_ORIGINS]
+    if settings.BACKEND_CORS_ORIGINS
+    else ["*"] if settings.is_dev else []
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS]
-    if settings.BACKEND_CORS_ORIGINS
-    else ["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

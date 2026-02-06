@@ -9,6 +9,11 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "GoalMap AI Server"
     VERSION: str = "0.1.0"
     API_V1_STR: str = "/api/v1"
+    APP_ENV: str = "development"  # development | production
+
+    @property
+    def is_dev(self) -> bool:
+        return self.APP_ENV == "development"
 
     # CORS
     BACKEND_CORS_ORIGINS: list[AnyHttpUrl] = []

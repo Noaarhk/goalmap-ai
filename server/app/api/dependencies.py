@@ -84,10 +84,15 @@ async def get_current_user(
         else:
             # Use HS256 with JWT secret (older Supabase projects)
             if not settings.SUPABASE_JWT_SECRET:
-                logger.warning(
-                    "SUPABASE_JWT_SECRET not configured, skipping validation"
+                if settings.is_dev:
+                    logger.warning(
+                        "SUPABASE_JWT_SECRET not configured, using dev user (dev mode only)"
+                    )
+                    return CurrentUser(user_id="dev-user", email="dev@example.com")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Authentication not configured",
                 )
-                return CurrentUser(user_id="dev-user", email="dev@example.com")
 
             payload = jwt.decode(
                 token,
