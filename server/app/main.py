@@ -16,7 +16,6 @@ ALL_PROMPT_NAMES = [
     "discovery-analysis",
     "roadmap-planner",
     "roadmap-actions",
-    "roadmap-direct-actions",
     "checkin-analysis",
 ]
 

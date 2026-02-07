@@ -17,7 +17,6 @@ from app.agents.discovery.prompts import (
 )
 from app.agents.roadmap.prompts import (
     ACTION_GENERATOR_PROMPT,
-    DIRECT_ACTIONS_PROMPT,
     STRATEGIC_PLANNER_PROMPT,
 )
 from app.core.config import settings
@@ -97,21 +96,6 @@ def main():
         prompt=[
             {"role": "system", "content": ACTION_GENERATOR_PROMPT},
             {"role": "user", "content": "Generate actions."},
-        ],
-        type="chat",
-        labels=["production"],
-        config={
-            "temperature": 0.3,
-            "response_format": {"type": "json_object"},
-        },
-    )
-
-    print("Creating 'roadmap-direct-actions'...")
-    langfuse.create_prompt(
-        name="roadmap-direct-actions",
-        prompt=[
-            {"role": "system", "content": DIRECT_ACTIONS_PROMPT},
-            {"role": "user", "content": "Generate direct goal actions."},
         ],
         type="chat",
         labels=["production"],
