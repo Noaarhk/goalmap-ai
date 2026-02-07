@@ -10,16 +10,15 @@ import asyncio
 from typing import Any
 
 from app.agents.roadmap.prompts import (
-    ACTION_GENERATOR_PROMPT,
-    DIRECT_ACTIONS_PROMPT,
-    STRATEGIC_PLANNER_PROMPT,
+    get_action_generator_prompt,
+    get_direct_actions_prompt,
+    get_strategic_planner_prompt,
 )
 from app.schemas.events.roadmap import GoalNode, Milestone
 from app.schemas.llm.roadmap import ActionContent, GoalContent, MilestoneContent
 from app.services.gemini import get_llm, parse_gemini_output
 from app.utils.roadmap import assign_action_ids, assign_goal_ids
 from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.prompts import ChatPromptTemplate
 
 llm = get_llm(model="gemini-3-pro-preview")
 
@@ -38,13 +37,7 @@ async def generate_skeleton(context: dict[str, Any]) -> GoalNode | None:
     """
     goal_text = context.get("goal", "")
 
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", STRATEGIC_PLANNER_PROMPT),
-            ("human", "Create the roadmap skeleton."),
-        ]
-    )
-
+    prompt = get_strategic_planner_prompt()
     chain = prompt | llm | parse_gemini_output | JsonOutputParser()
 
     try:
@@ -87,12 +80,7 @@ async def generate_actions(
     goal_text = context.get("goal", "")
 
     # --- Generate milestone actions in parallel ---
-    action_prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", ACTION_GENERATOR_PROMPT),
-            ("human", "Generate actions."),
-        ]
-    )
+    action_prompt = get_action_generator_prompt()
     action_chain = action_prompt | llm | parse_gemini_output | JsonOutputParser()
 
     async def _generate_for_milestone(ms: Milestone) -> Milestone:
@@ -124,12 +112,7 @@ async def generate_actions(
     )
 
     # --- Generate direct goal actions ---
-    direct_prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", DIRECT_ACTIONS_PROMPT),
-            ("human", "Generate direct goal actions."),
-        ]
-    )
+    direct_prompt = get_direct_actions_prompt()
     direct_chain = direct_prompt | llm | parse_gemini_output | JsonOutputParser()
 
     try:
