@@ -1,7 +1,21 @@
 import os
+from pathlib import Path
 
 from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Project root (goalmap-ai/)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+
+
+def _get_env_files() -> list[Path]:
+    """Build ordered list of .env files to load (later files override earlier)."""
+    env = os.getenv("APP_ENV", "development")
+    return [
+        PROJECT_ROOT / ".env",
+        PROJECT_ROOT / ".env.local",
+        PROJECT_ROOT / f".env.{env}",
+    ]
 
 
 class Settings(BaseSettings):
@@ -55,15 +69,7 @@ class Settings(BaseSettings):
     SUPABASE_JWT_SECRET: str | None = None
 
     model_config = SettingsConfigDict(
-        # Load .env first, then .env.local, then .env.{APP_ENV} (overrides previous)
-        env_file=[
-            ".env",
-            ".env.local",
-            "../.env",
-            "../.env.local",
-            f".env.{os.getenv('APP_ENV', 'development')}",
-            f"../.env.{os.getenv('APP_ENV', 'development')}",
-        ],
+        env_file=_get_env_files(),
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",
