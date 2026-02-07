@@ -1,6 +1,9 @@
+from contextlib import asynccontextmanager
+
 from app.api.routes import checkins, conversations, discovery, roadmaps
 from app.core.config import settings
 from app.core.exceptions import AppException
+from app.services.langfuse import preload_prompts
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,12 +11,29 @@ from fastapi.responses import JSONResponse
 
 load_dotenv()
 
+ALL_PROMPT_NAMES = [
+    "discovery-chat",
+    "discovery-analysis",
+    "roadmap-planner",
+    "roadmap-actions",
+    "roadmap-direct-actions",
+    "checkin-analysis",
+]
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    preload_prompts(ALL_PROMPT_NAMES)
+    yield
+
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="LangGraph-powered backend for GoalMap AI",
     version=settings.VERSION,
     docs_url="/docs" if settings.is_dev else None,
     redoc_url="/redoc" if settings.is_dev else None,
+    lifespan=lifespan,
 )
 
 

@@ -1,6 +1,10 @@
+import logging
+
 from app.core.config import settings
 from langchain_core.prompts import ChatPromptTemplate
 from langfuse.callback import CallbackHandler
+
+logger = logging.getLogger(__name__)
 
 
 def get_langfuse_handler(
@@ -36,39 +40,45 @@ if settings.LANGFUSE_PUBLIC_KEY and settings.LANGFUSE_SECRET_KEY:
     except ImportError:
         pass
 
+# Prompt cache: fetched once at startup, reused forever
+_prompt_cache: dict[str, ChatPromptTemplate] = {}
+
+
+def _fetch_prompt(name: str) -> ChatPromptTemplate | None:
+    """Single Langfuse fetch attempt. Returns None on failure."""
+    if not langfuse_client:
+        return None
+    try:
+        prompt_client = langfuse_client.get_prompt(name, type="chat")
+        logger.info(f"Loaded prompt '{name}' v{prompt_client.version} from Langfuse")
+        prompt = prompt_client.get_langchain_prompt()
+
+        if isinstance(prompt, ChatPromptTemplate):
+            return prompt
+        if isinstance(prompt, list):
+            return ChatPromptTemplate.from_messages(prompt)
+        logger.warning(f"Unexpected prompt type {type(prompt)} for '{name}'")
+    except Exception as e:
+        logger.warning(f"Failed to fetch prompt '{name}' from Langfuse: {e}")
+    return None
+
+
+def preload_prompts(prompt_names: list[str]) -> None:
+    """Fetch all prompts from Langfuse at once (call at server startup)."""
+    if not langfuse_client:
+        logger.info("Langfuse not configured, using local fallbacks")
+        return
+
+    for name in prompt_names:
+        result = _fetch_prompt(name)
+        if result:
+            _prompt_cache[name] = result
+
+    logger.info(f"Preloaded {len(_prompt_cache)}/{len(prompt_names)} prompts from Langfuse")
+
 
 def get_prompt(name: str, fallback: ChatPromptTemplate) -> ChatPromptTemplate:
-    """
-    Fetch a prompt from Langfuse.
-    If fails or not configured, return the provided fallback ChatPromptTemplate.
-    """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
-    if langfuse_client:
-        try:
-            # Langfuse get_prompt returns a Langchain prompt template
-            # type_ defined as "chat" in Langfuse allows pulling as ChatPrompt
-            prompt_client = langfuse_client.get_prompt(name, type="chat")
-            logger.info(
-                f"Loaded prompt '{name}' version {prompt_client.version} from Langfuse"
-            )
-            prompt = prompt_client.get_langchain_prompt()
-
-            # Defensive conversion: ensure ChatPromptTemplate type
-            # External library may return list or other types in edge cases
-            if isinstance(prompt, ChatPromptTemplate):
-                return prompt
-            elif isinstance(prompt, list):
-                logger.warning(
-                    f"Prompt '{name}' returned list, converting to ChatPromptTemplate"
-                )
-                return ChatPromptTemplate.from_messages(prompt)
-            else:
-                logger.warning(f"Unexpected prompt type {type(prompt)}, using fallback")
-        except Exception as e:
-            logger.warning(f"Failed to fetch prompt '{name}' from Langfuse: {e}")
-
-    logger.info(f"Using local fallback for prompt '{name}'")
+    """Return cached prompt or fallback. No network calls after startup."""
+    if name in _prompt_cache:
+        return _prompt_cache[name]
     return fallback
