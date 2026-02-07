@@ -1,3 +1,5 @@
+import logging
+
 from app.api.dependencies import get_uow
 from app.core.uow import AsyncUnitOfWork
 from app.schemas.api.checkins import (
@@ -8,6 +10,8 @@ from app.schemas.api.checkins import (
 )
 from app.services import checkin_service
 from fastapi import APIRouter, Depends, HTTPException
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/checkins", tags=["checkins"])
 
@@ -34,6 +38,7 @@ async def analyze_checkin(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.exception("Check-in analysis failed for roadmap %s", request.roadmap_id)
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 
@@ -59,6 +64,7 @@ async def confirm_checkin(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.exception("Check-in confirmation failed for checkin %s", request.checkin_id)
         raise HTTPException(status_code=500, detail=f"Confirmation failed: {str(e)}")
 
 

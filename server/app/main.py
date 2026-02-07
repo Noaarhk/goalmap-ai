@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from app.api.routes import checkins, conversations, discovery, roadmaps
@@ -8,6 +9,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -38,6 +41,25 @@ app = FastAPI(
 
 @app.exception_handler(AppException)
 async def app_exception_handler(request: Request, exc: AppException):
+    if exc.status_code >= 500:
+        logger.exception(
+            "[%s %s] %s(%d): %s",
+            request.method,
+            request.url.path,
+            exc.__class__.__name__,
+            exc.status_code,
+            exc.message,
+        )
+    else:
+        logger.exception(
+            "[%s %s] %s(%d): %s",
+            request.method,
+            request.url.path,
+            exc.__class__.__name__,
+            exc.status_code,
+            exc.message,
+        )
+
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -46,6 +68,24 @@ async def app_exception_handler(request: Request, exc: AppException):
             "code": exc.__class__.__name__,
         },
         headers=exc.headers,
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception(
+        "[%s %s] Unhandled exception: %s",
+        request.method,
+        request.url.path,
+        str(exc),
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "message": "Internal server error",
+            "detail": str(exc) if settings.is_dev else None,
+            "code": "InternalServerError",
+        },
     )
 
 

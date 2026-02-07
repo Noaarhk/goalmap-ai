@@ -291,7 +291,7 @@ const TransitionView: React.FC<TransitionViewProps> = ({ onApprove }) => {
 				<div className="mt-8 flex gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
 					<button
 						type="button"
-						onClick={onApprove}
+						onClick={() => onApprove?.()}
 						className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl font-bold text-sm uppercase tracking-wider shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-105 transition-all active:scale-95"
 					>
 						<Rocket className="w-5 h-5" />

@@ -104,7 +104,9 @@ export function VisualizationContainer() {
 						fitView
 					>
 						<Background color="#223149" gap={40} className="bg-grid-pattern" />
-						<Controls className="bg-slate-800 border-slate-700 fill-white" />
+						<Controls
+							className="!bg-slate-800 !border-slate-700 !shadow-lg [&>button]:!bg-slate-800 [&>button]:!border-slate-700 [&>button]:!fill-white [&>button:hover]:!bg-slate-700"
+						/>
 
 						<Panel
 							position="top-left"
@@ -349,25 +351,18 @@ export function VisualizationContainer() {
 								</div>
 							)}
 
-							{/* Details Section */}
-							{selectedNode.details.length > 0 && (
-								<div className="space-y-4">
-									<h4 className="font-black text-[10px] text-slate-500 uppercase tracking-widest flex items-center gap-2">
-										<div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
-										Details
-									</h4>
-									<ul className="space-y-2">
-										{selectedNode.details.map((detail, i) => (
-											<li
-												key={`${i}-${detail}`}
-												className="flex gap-3 text-sm text-slate-300 p-3 rounded-xl bg-slate-900/50 border border-slate-800/50"
-											>
-												<span className="leading-relaxed">{detail}</span>
-											</li>
-										))}
-									</ul>
-								</div>
-							)}
+						{/* Details Section */}
+						{selectedNode.details && (
+							<div className="space-y-4">
+								<h4 className="font-black text-[10px] text-slate-500 uppercase tracking-widest flex items-center gap-2">
+									<div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
+									Details
+								</h4>
+								<p className="text-sm text-slate-300 p-3 rounded-xl bg-slate-900/50 border border-slate-800/50 leading-relaxed">
+									{selectedNode.details}
+								</p>
+							</div>
+						)}
 						</div>
 
 						<div className="bg-[#101722] border-t border-slate-800 flex flex-col h-64">
