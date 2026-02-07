@@ -57,7 +57,7 @@ class RoadmapSkeletonEvent(BaseModel):
     """Event sent when skeleton (goal + milestones) is planned."""
 
     goal: GoalNode  # Contains milestones (actions empty)
-    thread_id: str | None = None  # For HIL resume
+    roadmap_id: str  # DB-persisted roadmap UUID
 
 
 class RoadmapActionsEvent(BaseModel):

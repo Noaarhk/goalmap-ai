@@ -302,7 +302,7 @@ export function DiscoveryContainer() {
 
 		// --- HIL Step 2: Continue after approval ---
 		const continueWithActions = async (
-			threadId: string,
+			roadmapId: string,
 			modifiedMilestones?: { id: string; label: string; is_new?: boolean }[],
 		) => {
 			setStreamingStatus("Planning actions...");
@@ -320,7 +320,7 @@ export function DiscoveryContainer() {
 					currentRoadmap.edges = currentRoadmap.edges.filter(e => !e.source.startsWith("e-") || e.source === goalNode.id);
 					
 					// Add modified milestones
-					const milestoneNodes = modifiedMilestones.map((m, idx) => ({
+					const milestoneNodes = modifiedMilestones.map((m) => ({
 						id: m.id,
 						type: "milestone" as const,
 						label: m.label,
@@ -350,8 +350,7 @@ export function DiscoveryContainer() {
 
 			try {
 				await apiClient.streamActions(
-					threadId,
-					blueprint,
+					roadmapId,
 					currentConversationId,
 					(event) => {
 						if (event.type === "roadmap_actions") {
@@ -426,7 +425,7 @@ export function DiscoveryContainer() {
 				currentConversationId,
 				(event) => {
 					if (event.type === "roadmap_skeleton") {
-						const { goal, thread_id } = event.data;
+						const { goal, roadmap_id } = event.data;
 
 						// Update streaming state
 						setStreamingGoal(goal.label);
@@ -466,13 +465,14 @@ export function DiscoveryContainer() {
 						currentRoadmap.nodes = [goalNode, ...milestoneNodes];
 						currentRoadmap.edges = milestoneEdges;
 						currentRoadmap.summary = goal.details || "Quest roadmap";
+						currentRoadmap.id = roadmap_id;
 
 						// Set approval state with callback
-						if (thread_id) {
+						if (roadmap_id) {
 							setAwaitingApproval(
-								thread_id,
+								roadmap_id,
 								goal,
-								(modifiedMilestones) => continueWithActions(thread_id, modifiedMilestones),
+								(modifiedMilestones) => continueWithActions(roadmap_id, modifiedMilestones),
 							);
 						}
 					} else if (event.type === "error") {

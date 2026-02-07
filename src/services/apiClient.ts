@@ -81,7 +81,7 @@ export interface SkeletonResponseEvent {
 	type: "roadmap_skeleton" | "error";
 	data: {
 		goal?: any;
-		thread_id?: string;
+		roadmap_id?: string;
 		code?: string;
 		message?: string;
 	};
@@ -271,8 +271,7 @@ export const apiClient = {
 
 	// HIL Step 2: Resume and generate actions
 	streamActions: async (
-		threadId: string,
-		blueprint: BlueprintData,
+		roadmapId: string,
 		chatId: string,
 		onEvent: EventHandler<ActionsResponseEvent>,
 		modifiedMilestones?: { id: string; label: string; is_new?: boolean }[],
@@ -280,12 +279,7 @@ export const apiClient = {
 		await streamRequest(
 			`${API_BASE}/v1/roadmaps/stream/actions`,
 			{
-				thread_id: threadId,
-				goal: blueprint.goal,
-				why: blueprint.why,
-				timeline: blueprint.timeline,
-				obstacles: blueprint.obstacles,
-				resources: blueprint.resources,
+				roadmap_id: roadmapId,
 				conversation_id: chatId,
 				modified_milestones: modifiedMilestones || null,
 			},

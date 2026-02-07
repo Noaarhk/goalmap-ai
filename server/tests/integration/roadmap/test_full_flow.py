@@ -90,7 +90,7 @@ async def test_roadmap_full_flow_persistence(db_session):
 
 @pytest.mark.asyncio
 async def test_roadmap_hil_flow_two_step(db_session):
-    """Test HIL flow: skeleton generation, then actions after approval."""
+    """Test HIL flow: skeleton generation (persisted to DB), then actions after approval."""
     # 1. Setup
     user_id = str(uuid4())
     conv_id = str(uuid4())
@@ -120,36 +120,44 @@ async def test_roadmap_hil_flow_two_step(db_session):
         uow = TestUnitOfWork(db_session)
         service = RoadmapStreamService(uow)
 
-        # Step 1: Generate skeleton
+        # Step 1: Generate skeleton (persisted as DRAFT in DB)
         skeleton_events = []
-        thread_id = None
+        roadmap_id = None
         async for event in service.stream_skeleton(request, user_id):
             skeleton_events.append(event)
-            if "thread_id" in event:
+            if "roadmap_id" in event:
                 import json
 
                 data_start = event.find("data: ") + 6
                 data = json.loads(event[data_start:].strip())
-                thread_id = data.get("thread_id")
+                roadmap_id = data.get("roadmap_id")
 
         assert len(skeleton_events) >= 1
-        assert thread_id is not None
+        assert roadmap_id is not None
 
-        # Step 2: Resume and generate actions
+        # Verify skeleton is persisted as DRAFT
+        stmt = (
+            select(Roadmap)
+            .where(Roadmap.id == roadmap_id)
+            .options(selectinload(Roadmap.nodes))
+        )
+        result = await db_session.execute(stmt)
+        draft_roadmap = result.scalars().first()
+        assert draft_roadmap is not None
+        assert draft_roadmap.status.value == "draft"
+
+        # Step 2: Resume and generate actions (loads from DB)
         action_events = []
-        async for event in service.stream_actions(thread_id, user_id, request):
+        async for event in service.stream_actions(roadmap_id, user_id):
             action_events.append(event)
 
         assert len(action_events) >= 1
 
-        # Verify persistence
-        stmt = (
-            select(Roadmap)
-            .where(Roadmap.conversation_id == conv_id)
-            .options(selectinload(Roadmap.nodes))
-        )
+        # Verify persistence and activation
+        await db_session.expire_all()
         result = await db_session.execute(stmt)
         roadmap = result.scalars().first()
 
         assert roadmap is not None
         assert roadmap.goal == "HIL Flow Goal"
+        assert roadmap.status.value == "active"

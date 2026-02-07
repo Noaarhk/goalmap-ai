@@ -135,8 +135,8 @@ async def stream_skeleton(
     """
     HIL Step 1: Generate roadmap skeleton (milestones only).
 
-    Returns skeleton structure for user review.
-    The response includes a thread_id for resuming with /stream/actions.
+    Persists Roadmap as DRAFT with Goal + Milestones.
+    Returns roadmap_id for resuming with /stream/actions.
     """
     return StreamingResponse(
         service.stream_skeleton(request, user.user_id),
@@ -154,28 +154,14 @@ async def stream_actions(
     HIL Step 2: Resume and generate all actions.
 
     Call after user has approved the skeleton from /stream/skeleton.
-    Requires thread_id from the skeleton response.
-    
-    If modified_milestones is provided, generates actions based on user's edits.
-    Otherwise, resumes from checkpoint with original skeleton.
-    """
-    # Build GenerateRoadmapRequest for persistence if fields provided
-    persist_request = None
-    if request.goal:
-        persist_request = GenerateRoadmapRequest(
-            conversation_id=request.conversation_id or "",
-            goal=request.goal,
-            why=request.why or "",
-            timeline=request.timeline,
-            obstacles=request.obstacles,
-            resources=request.resources,
-        )
+    Requires roadmap_id from the skeleton response.
 
+    If modified_milestones is provided, updates milestones before generating actions.
+    """
     return StreamingResponse(
         service.stream_actions(
-            request.thread_id,
+            request.roadmap_id,
             user.user_id,
-            persist_request,
             request.modified_milestones,
         ),
         media_type="text/event-stream",

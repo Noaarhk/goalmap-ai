@@ -49,7 +49,7 @@ class RoadmapResponse(BaseModel):
 class GenerateRoadmapRequest(BaseModel):
     conversation_id: str
     goal: str
-    why: str
+    why: str | None = None
     timeline: str | None = None
     obstacles: str | None = None
     resources: str | None = None
@@ -67,13 +67,8 @@ class ModifiedMilestone(BaseModel):
 class ResumeRoadmapRequest(BaseModel):
     """Request to resume roadmap generation after skeleton approval."""
 
-    thread_id: str
+    roadmap_id: str  # DB roadmap UUID
     conversation_id: str | None = None
-    goal: str | None = None  # For persistence
-    why: str | None = None
-    timeline: str | None = None
-    obstacles: str | None = None
-    resources: str | None = None
-    
+
     # User modifications from review screen
     modified_milestones: list[ModifiedMilestone] | None = None
