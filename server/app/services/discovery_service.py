@@ -1,15 +1,18 @@
 """
-Discovery Streaming Service
+Discovery Streaming Service - Response First, Background Analysis
 
-Simplified implementation without LangGraph.
-Uses plain async functions with LangChain streaming.
+Features:
+- Immediate token streaming (no blocking analysis)
+- Background analysis runs AFTER user sees full response
+- Blueprint update is non-blocking
+- Uncertainty detection and tracking
 """
 
 import logging
 import uuid
 from typing import AsyncGenerator
 
-from app.agents.discovery.pipeline import analyze_turn, generate_chat_stream
+from app.agents.discovery.pipeline import stream_response, analyze_response_background
 from app.core.uow import AsyncUnitOfWork
 from app.schemas.api.chat import BlueprintData, ChatRequest
 from app.schemas.events.base import ErrorEventData, StatusEventData, TokenEventData
@@ -32,7 +35,12 @@ class DiscoveryStreamService:
         user_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """
-        Execute discovery pipeline and yield SSE events.
+        Stream chat response first, then analyze in background.
+
+        Flow:
+        1. Immediately start streaming response tokens
+        2. After streaming complete, run background analysis
+        3. Emit blueprint_update event when analysis is done
         """
         # 1. Prepare messages
         messages = []
@@ -68,31 +76,17 @@ class DiscoveryStreamService:
             if user_id and request.chat_id:
                 await self._persist_user_message(request.chat_id, request.message)
 
-            # --- Step 1: Analyze ---
-            yield self._status_event("analyze_turn")
-
-            updated_blueprint = await analyze_turn(messages, blueprint)
-
-            # Emit blueprint update
-            yield self._blueprint_event(updated_blueprint)
-
-            # Persist blueprint
-            if user_id and request.chat_id:
-                await self._persist_blueprint(request.chat_id, updated_blueprint)
-
-            # --- Step 2: Generate Response ---
-            yield self._status_event("generate_chat")
+            # --- Step 1: Stream response immediately ---
+            yield self._status_event("generating")
 
             full_response = ""
             run_id = str(uuid.uuid4())
 
-            async for token in generate_chat_stream(
-                messages, updated_blueprint, callbacks
-            ):
+            async for token in stream_response(messages, blueprint, callbacks):
                 full_response += token
                 yield self._token_event(token, run_id)
 
-            # Persist assistant message
+            # Persist assistant message immediately after streaming
             if user_id and request.chat_id and full_response:
                 async with self.uow as uow:
                     await uow.conversations.append_message(
@@ -100,6 +94,23 @@ class DiscoveryStreamService:
                         role="assistant",
                         content=full_response,
                     )
+
+            # --- Step 2: Background analysis ---
+            yield self._status_event("analyzing")
+
+            updated_blueprint = await analyze_response_background(
+                user_message=request.message,
+                assistant_response=full_response,
+                blueprint=blueprint,
+                callbacks=callbacks,
+            )
+
+            # Emit blueprint update
+            yield self._blueprint_event(updated_blueprint)
+
+            # Persist blueprint
+            if user_id and request.chat_id:
+                await self._persist_blueprint(request.chat_id, updated_blueprint)
 
         except Exception as e:
             logger.error(f"Stream error: {e}", exc_info=True)

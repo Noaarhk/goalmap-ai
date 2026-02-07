@@ -210,6 +210,7 @@ async function streamRequest<T>(
 }
 
 export const apiClient = {
+	// Stream chat with response-first architecture
 	streamChat: async (
 		message: string,
 		history: { role: string; content: string }[],
