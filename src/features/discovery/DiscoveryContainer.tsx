@@ -80,20 +80,21 @@ export function DiscoveryContainer() {
 				const roadmaps = await apiClient.getRoadmaps();
 				console.log("[DiscoveryContainer] Loaded roadmaps:", roadmaps);
 				const historyData = roadmaps.map((r: any) => {
-					// Transform API nodes to frontend format (snake_case → camelCase)
-					const transformedNodes = (r.nodes || []).map((n: any) => ({
-						id: n.id,
-						label: n.label,
-						type: n.type,
-						isAssumed: n.is_assumed,
-						details: n.details || null,
-						status: n.status,
-						order: n.order,
-						progress: n.progress || 0,
-						startDate: n.start_date,
-						endDate: n.end_date,
-						parentId: n.parent_id,
-					}));
+				// Transform API nodes to frontend format (snake_case → camelCase)
+				const transformedNodes = (r.nodes || []).map((n: any) => ({
+					id: n.id,
+					label: n.label,
+					type: n.type,
+					isAssumed: n.is_assumed,
+					details: n.details || null,
+					status: n.status,
+					order: n.order,
+					progress: n.progress || 0,
+					startDate: n.start_date,
+					endDate: n.end_date,
+					completionCriteria: n.completion_criteria,
+					parentId: n.parent_id,
+				}));
 
 					// Generate edges from parent_id relationships
 					const edges = transformedNodes
@@ -303,7 +304,7 @@ export function DiscoveryContainer() {
 		// --- HIL Step 2: Continue after approval ---
 		const continueWithActions = async (
 			roadmapId: string,
-			modifiedMilestones?: { id: string; label: string; is_new?: boolean }[],
+			modifiedMilestones?: { id: string; label: string; start_date?: string; end_date?: string; completion_criteria?: string; is_new?: boolean }[],
 		) => {
 			setStreamingStatus("Planning actions...");
 			setStreamingStep(3);
@@ -344,6 +345,9 @@ export function DiscoveryContainer() {
 						id: m.id,
 						label: m.label,
 						status: "pending" as const,
+						startDate: m.start_date,
+						endDate: m.end_date,
+						completionCriteria: m.completion_criteria,
 					})),
 				);
 			}
@@ -384,6 +388,7 @@ export function DiscoveryContainer() {
 								label: a.label,
 								isAssumed: false,
 								details: a.details || null,
+								parentId: parentId,
 							}));
 
 							const taskEdges = taskNodes.map((a: any) => ({
@@ -431,13 +436,16 @@ export function DiscoveryContainer() {
 						setStreamingGoal(goal.label);
 						setStreamingStatus("Designing milestones...");
 						setStreamingStep(2);
-						setStreamingMilestones(
-							goal.milestones.map((m: any) => ({
-								id: m.id,
-								label: m.label,
-								status: "done" as const,
-							})),
-						);
+				setStreamingMilestones(
+					goal.milestones.map((m: any) => ({
+						id: m.id,
+						label: m.label,
+						status: "done" as const,
+						startDate: m.start_date,
+						endDate: m.end_date,
+						completionCriteria: m.completion_criteria,
+					})),
+				);
 
 						// Build skeleton nodes
 						const goalNode = {
@@ -797,10 +805,10 @@ export function DiscoveryContainer() {
 					<button
 						type="button"
 						onClick={() => useAuthStore.getState().signOut()}
-						className="p-2 bg-slate-900/50 hover:bg-red-900/20 border border-slate-800 hover:border-red-900/50 rounded-lg text-slate-400 hover:text-red-400 transition-all backdrop-blur-sm"
-						title="Log Out"
+						className="flex items-center gap-1.5 px-3 py-2 bg-slate-900/50 hover:bg-red-900/20 border border-slate-800 hover:border-red-900/50 rounded-lg text-slate-400 hover:text-red-400 transition-all backdrop-blur-sm text-xs"
 					>
-						<LogOut className="w-5 h-5" />
+						<LogOut className="w-4 h-4" />
+						Log Out
 					</button>
 				</div>
 
