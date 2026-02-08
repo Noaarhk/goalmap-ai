@@ -1,4 +1,5 @@
 import logging
+from datetime import date
 from uuid import UUID
 
 from app.models.node import Node, NodeStatus, NodeType
@@ -8,6 +9,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_date(val: str | date | None) -> date | None:
+    """Convert YYYY-MM-DD string to date object. Pass through date/None."""
+    if val is None or isinstance(val, date):
+        return val
+    try:
+        return date.fromisoformat(val)
+    except (ValueError, TypeError):
+        return None
 
 
 class RoadmapRepository(BaseRepository[Roadmap]):
@@ -73,8 +84,8 @@ class RoadmapRepository(BaseRepository[Roadmap]):
                 details=m.get("details"),
                 order=m.get("order", i),
                 is_assumed=m.get("is_assumed", False),
-                start_date=m.get("start_date"),
-                end_date=m.get("end_date"),
+                start_date=_parse_date(m.get("start_date")),
+                end_date=_parse_date(m.get("end_date")),
                 completion_criteria=m.get("completion_criteria"),
                 status=NodeStatus.PENDING,
             )
@@ -119,8 +130,8 @@ class RoadmapRepository(BaseRepository[Roadmap]):
                 details=m.get("details"),
                 order=m.get("order", i),
                 is_assumed=m.get("is_assumed", False),
-                start_date=m.get("start_date"),
-                end_date=m.get("end_date"),
+                start_date=_parse_date(m.get("start_date")),
+                end_date=_parse_date(m.get("end_date")),
                 completion_criteria=m.get("completion_criteria"),
                 status=NodeStatus.PENDING,
             )
@@ -237,8 +248,8 @@ class RoadmapRepository(BaseRepository[Roadmap]):
                 details=m.get("details"),
                 order=m.get("order", i),
                 is_assumed=m.get("is_assumed", False),
-                start_date=m.get("start_date"),
-                end_date=m.get("end_date"),
+                start_date=_parse_date(m.get("start_date")),
+                end_date=_parse_date(m.get("end_date")),
                 completion_criteria=m.get("completion_criteria"),
                 status=NodeStatus.PENDING,
             )
