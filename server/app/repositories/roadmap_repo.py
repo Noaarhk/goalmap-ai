@@ -36,7 +36,9 @@ class RoadmapRepository(BaseRepository[Roadmap]):
 
         if existing:
             # Replace nodes on existing roadmap instead of creating a new one
-            logger.info(f"[Repo] Existing roadmap found ({existing.id}), replacing skeleton")
+            logger.info(
+                f"[Repo] Existing roadmap found ({existing.id}), replacing skeleton"
+            )
             return await self._replace_skeleton(existing, milestones_data)
 
         # 1. Create Roadmap (DRAFT)
@@ -71,12 +73,17 @@ class RoadmapRepository(BaseRepository[Roadmap]):
                 details=m.get("details"),
                 order=m.get("order", i),
                 is_assumed=m.get("is_assumed", False),
+                start_date=m.get("start_date"),
+                end_date=m.get("end_date"),
+                completion_criteria=m.get("completion_criteria"),
                 status=NodeStatus.PENDING,
             )
             self.db.add(ms_node)
 
         await self.db.flush()
-        logger.info(f"[Repo] Skeleton created: roadmap_id={roadmap.id}, milestones={len(milestones_data)}")
+        logger.info(
+            f"[Repo] Skeleton created: roadmap_id={roadmap.id}, milestones={len(milestones_data)}"
+        )
         return roadmap
 
     async def _replace_skeleton(
@@ -112,6 +119,9 @@ class RoadmapRepository(BaseRepository[Roadmap]):
                 details=m.get("details"),
                 order=m.get("order", i),
                 is_assumed=m.get("is_assumed", False),
+                start_date=m.get("start_date"),
+                end_date=m.get("end_date"),
+                completion_criteria=m.get("completion_criteria"),
                 status=NodeStatus.PENDING,
             )
             self.db.add(ms_node)
@@ -227,6 +237,9 @@ class RoadmapRepository(BaseRepository[Roadmap]):
                 details=m.get("details"),
                 order=m.get("order", i),
                 is_assumed=m.get("is_assumed", False),
+                start_date=m.get("start_date"),
+                end_date=m.get("end_date"),
+                completion_criteria=m.get("completion_criteria"),
                 status=NodeStatus.PENDING,
             )
             self.db.add(ms_node)

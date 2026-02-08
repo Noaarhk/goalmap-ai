@@ -5,7 +5,7 @@ import { supabase } from "./supabase";
 interface ServerNodeResponse {
 	id: string;
 	parent_id: string | null;
-	type: "goal" | "milestone" | "task";
+	type: "goal" | "milestone" | "task" | "action";
 	label: string;
 	details: string | null;
 	order: number;
@@ -37,7 +37,7 @@ function transformServerRoadmap(server: ServerRoadmapResponse): RoadmapData {
 		label: n.label,
 		details: n.details,
 		isAssumed: n.is_assumed,
-		type: n.type,
+		type: n.type === "action" ? "task" : n.type,
 		status: n.status,
 		order: n.order,
 		progress: n.progress,
@@ -274,7 +274,7 @@ export const apiClient = {
 		roadmapId: string,
 		chatId: string,
 		onEvent: EventHandler<ActionsResponseEvent>,
-		modifiedMilestones?: { id: string; label: string; is_new?: boolean }[],
+		modifiedMilestones?: { id: string; label: string; start_date?: string; end_date?: string; completion_criteria?: string; is_new?: boolean }[],
 	) => {
 		await streamRequest(
 			`${API_BASE}/v1/roadmaps/stream/actions`,

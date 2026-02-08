@@ -29,6 +29,9 @@ def assign_milestone_ids(milestones: list[MilestoneContent]) -> list[Milestone]:
                 label=ms.label,
                 details=ms.details,
                 is_assumed=ms.is_assumed,
+                start_date=ms.start_date,
+                end_date=ms.end_date,
+                completion_criteria=ms.completion_criteria,
                 order=i,
                 actions=assign_action_ids(ms.actions, ms_id),
             )

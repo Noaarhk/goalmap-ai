@@ -15,6 +15,10 @@ Goal: {goal}
 Context: {context}
 
 Create a goal structure with 3-5 major milestones.
+Each milestone MUST include:
+- start_date / end_date: Estimated schedule in YYYY-MM-DD format. Use the timeline context to calculate realistic dates from today.
+- completion_criteria: A clear, measurable condition that defines when this milestone is done.
+
 If the goal benefits from cross-cutting actions (e.g. daily habits, progress tracking),
 include them in the top-level "actions" array. Otherwise leave it empty.
 
@@ -27,7 +31,10 @@ Return JSON (NO IDs - they will be assigned by the system):
             {{
                 "label": "Milestone Title",
                 "details": "Brief description",
-                "is_assumed": false
+                "is_assumed": false,
+                "start_date": "2025-03-01",
+                "end_date": "2025-03-15",
+                "completion_criteria": "Clear measurable condition for completion"
             }}
         ],
         "actions": [

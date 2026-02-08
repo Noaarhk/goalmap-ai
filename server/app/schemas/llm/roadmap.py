@@ -15,6 +15,9 @@ class MilestoneContent(BaseModel):
     label: str
     details: str | None = None
     is_assumed: bool = False
+    start_date: str | None = None  # YYYY-MM-DD
+    end_date: str | None = None  # YYYY-MM-DD
+    completion_criteria: str | None = None
     actions: list[ActionContent] = Field(default_factory=list)
 
 

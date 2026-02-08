@@ -1,4 +1,5 @@
 import {
+	Calendar,
 	Check,
 	CheckCircle,
 	Edit3,
@@ -22,7 +23,7 @@ const steps = [
 ];
 
 interface TransitionViewProps {
-	onApprove?: (modifiedMilestones?: { id: string; label: string; is_new?: boolean }[]) => void;
+	onApprove?: (modifiedMilestones?: { id: string; label: string; start_date?: string; end_date?: string; completion_criteria?: string; is_new?: boolean }[]) => void;
 }
 
 const TransitionView: React.FC<TransitionViewProps> = ({ onApprove }) => {
@@ -38,7 +39,7 @@ const TransitionView: React.FC<TransitionViewProps> = ({ onApprove }) => {
 
 	const [isEditing, setIsEditing] = useState(false);
 	const [editedMilestones, setEditedMilestones] = useState<
-		{ id: string; label: string; status: "pending" | "generating" | "done" }[]
+		{ id: string; label: string; status: "pending" | "generating" | "done"; startDate?: string; endDate?: string; completionCriteria?: string }[]
 	>([]);
 
 	const getActionsForMilestone = (milestoneId: string) =>
@@ -66,10 +67,13 @@ const TransitionView: React.FC<TransitionViewProps> = ({ onApprove }) => {
 		
 		// Convert to API format and send to backend
 		const modifiedForApi = editedMilestones.map((m) => ({
-			id: m.id,
-			label: m.label,
-			is_new: m.id.startsWith("new-"),
-		}));
+		id: m.id,
+		label: m.label,
+		start_date: m.startDate,
+		end_date: m.endDate,
+		completion_criteria: m.completionCriteria,
+		is_new: m.id.startsWith("new-"),
+	}));
 		
 		onApprove?.(modifiedForApi);
 	};
@@ -78,6 +82,13 @@ const TransitionView: React.FC<TransitionViewProps> = ({ onApprove }) => {
 	const handleMilestoneChange = (id: string, newLabel: string) => {
 		setEditedMilestones((prev) =>
 			prev.map((m) => (m.id === id ? { ...m, label: newLabel } : m)),
+		);
+	};
+
+	// Update milestone field
+	const handleFieldChange = (id: string, field: string, value: string) => {
+		setEditedMilestones((prev) =>
+			prev.map((m) => (m.id === id ? { ...m, [field]: value || undefined } : m)),
 		);
 	};
 
@@ -203,55 +214,97 @@ const TransitionView: React.FC<TransitionViewProps> = ({ onApprove }) => {
 								}`}
 							>
 								<div className="flex items-center gap-3">
-									{isEditing ? (
-										<>
-											<GripVertical className="w-5 h-5 text-slate-500 cursor-grab" />
-											<div className="flex-1">
-												<p className="text-xs text-slate-400 mb-1">
-													Milestone {idx + 1}
-												</p>
+								{isEditing ? (
+									<>
+										<GripVertical className="w-5 h-5 text-slate-500 cursor-grab flex-shrink-0" />
+										<div className="flex-1 space-y-2">
+											<p className="text-xs text-slate-400">
+												Milestone {idx + 1}
+											</p>
+											<input
+												type="text"
+												value={milestone.label}
+												onChange={(e) =>
+													handleMilestoneChange(milestone.id, e.target.value)
+												}
+												className="w-full bg-slate-900/50 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500"
+											/>
+											<div className="flex items-center gap-2">
+												<Calendar className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
 												<input
-													type="text"
-													value={milestone.label}
+													type="date"
+													value={milestone.startDate ?? ""}
 													onChange={(e) =>
-														handleMilestoneChange(milestone.id, e.target.value)
+														handleFieldChange(milestone.id, "startDate", e.target.value)
 													}
-													className="w-full bg-slate-900/50 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500"
+													className="flex-1 bg-slate-900/50 border border-slate-600 rounded-lg px-2 py-1 text-white text-xs focus:outline-none focus:border-amber-500"
+												/>
+												<span className="text-xs text-slate-500">→</span>
+												<input
+													type="date"
+													value={milestone.endDate ?? ""}
+													onChange={(e) =>
+														handleFieldChange(milestone.id, "endDate", e.target.value)
+													}
+													className="flex-1 bg-slate-900/50 border border-slate-600 rounded-lg px-2 py-1 text-white text-xs focus:outline-none focus:border-amber-500"
 												/>
 											</div>
-											<button
-												type="button"
-												onClick={() => handleRemoveMilestone(milestone.id)}
-												className="p-2 hover:bg-red-900/30 rounded-lg text-slate-500 hover:text-red-400 transition-colors"
-											>
-												<Trash2 className="w-4 h-4" />
-											</button>
-										</>
-									) : (
-										<>
-											{milestone.status === "done" ? (
-												<CheckCircle className="w-5 h-5 text-blue-400" />
-											) : milestone.status === "generating" ? (
-												<Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
-											) : (
-												<div className="w-5 h-5 rounded-full border-2 border-slate-600" />
-											)}
-											<div className="flex-1">
+											<input
+												type="text"
+												value={milestone.completionCriteria ?? ""}
+												onChange={(e) =>
+													handleFieldChange(milestone.id, "completionCriteria", e.target.value)
+												}
+												placeholder="Completion criteria..."
+												className="w-full bg-slate-900/50 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-amber-500 placeholder:text-slate-600"
+											/>
+										</div>
+										<button
+											type="button"
+											onClick={() => handleRemoveMilestone(milestone.id)}
+											className="p-2 hover:bg-red-900/30 rounded-lg text-slate-500 hover:text-red-400 transition-colors flex-shrink-0"
+										>
+											<Trash2 className="w-4 h-4" />
+										</button>
+									</>
+								) : (
+									<>
+										{milestone.status === "done" ? (
+											<CheckCircle className="w-5 h-5 text-blue-400 flex-shrink-0" />
+										) : milestone.status === "generating" ? (
+											<Loader2 className="w-5 h-5 text-blue-400 animate-spin flex-shrink-0" />
+										) : (
+											<div className="w-5 h-5 rounded-full border-2 border-slate-600 flex-shrink-0" />
+										)}
+										<div className="flex-1">
+											<div className="flex items-center justify-between">
 												<p className="text-xs text-slate-400">
 													Milestone {idx + 1}
 												</p>
-												<p
-													className={`font-medium ${
-														milestone.status === "pending"
-															? "text-slate-500"
-															: "text-white"
-													}`}
-												>
-													{milestone.label}
-												</p>
+												{(milestone.startDate || milestone.endDate) && (
+													<span className="flex items-center gap-1 text-[10px] text-slate-500">
+														<Calendar className="w-3 h-3" />
+														{milestone.startDate || "?"} → {milestone.endDate || "?"}
+													</span>
+												)}
 											</div>
-										</>
-									)}
+											<p
+												className={`font-medium ${
+													milestone.status === "pending"
+														? "text-slate-500"
+														: "text-white"
+												}`}
+											>
+												{milestone.label}
+											</p>
+											{milestone.completionCriteria && (
+												<p className="text-[10px] text-slate-500 mt-0.5">
+													✓ {milestone.completionCriteria}
+												</p>
+											)}
+										</div>
+									</>
+								)}
 								</div>
 
 								{!isEditing &&

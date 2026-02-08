@@ -18,6 +18,9 @@ interface StreamingMilestone {
     id: string;
     label: string;
     status: "pending" | "generating" | "done";
+    startDate?: string;
+    endDate?: string;
+    completionCriteria?: string;
 }
 
 interface StreamingAction {
@@ -44,7 +47,7 @@ interface RoadmapStore {
     streamingRoadmapId: string | null;
     isAwaitingApproval: boolean;
     skeletonData: any | null;  // Raw skeleton for resume
-    approvalCallback: ((modifiedMilestones?: { id: string; label: string; is_new?: boolean }[]) => Promise<void>) | null;
+    approvalCallback: ((modifiedMilestones?: { id: string; label: string; start_date?: string; end_date?: string; completion_criteria?: string; is_new?: boolean }[]) => Promise<void>) | null;
 
     // Actions
     setRoadmap: (data: RoadmapData) => void;
@@ -65,8 +68,8 @@ interface RoadmapStore {
     resetStreaming: () => void;
     
     // HIL Actions
-    setAwaitingApproval: (roadmapId: string, skeleton: any, callback: (modifiedMilestones?: { id: string; label: string; is_new?: boolean }[]) => Promise<void>) => void;
-    approveAndContinue: (modifiedMilestones?: { id: string; label: string; is_new?: boolean }[]) => Promise<void>;
+    setAwaitingApproval: (roadmapId: string, skeleton: any, callback: (modifiedMilestones?: { id: string; label: string; start_date?: string; end_date?: string; completion_criteria?: string; is_new?: boolean }[]) => Promise<void>) => void;
+    approveAndContinue: (modifiedMilestones?: { id: string; label: string; start_date?: string; end_date?: string; completion_criteria?: string; is_new?: boolean }[]) => Promise<void>;
     clearAwaitingApproval: () => void;
     
     // Layout Actions

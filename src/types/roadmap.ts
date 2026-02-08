@@ -35,6 +35,9 @@ export interface StreamingMilestone {
     id: string;
     label: string;
     status: "pending" | "generating" | "done";
+    startDate?: string;
+    endDate?: string;
+    completionCriteria?: string;
 }
 
 export interface StreamingAction {

@@ -76,6 +76,9 @@ class RoadmapStreamService:
                     "details": ms.details,
                     "order": ms.order,
                     "is_assumed": ms.is_assumed,
+                    "start_date": ms.start_date,
+                    "end_date": ms.end_date,
+                    "completion_criteria": ms.completion_criteria,
                 }
                 for ms in goal_node.milestones
             ]
@@ -133,7 +136,9 @@ class RoadmapStreamService:
 
         Loads skeleton from DB, generates actions via LLM, persists and activates.
         """
-        logger.info(f"[Actions] Starting, roadmap_id={roadmap_id}, modified={modified_milestones is not None}")
+        logger.info(
+            f"[Actions] Starting, roadmap_id={roadmap_id}, modified={modified_milestones is not None}"
+        )
 
         try:
             # If milestones were modified, update DB first
@@ -208,6 +213,7 @@ class RoadmapStreamService:
             yield event
             if "roadmap_id" in event:
                 import json
+
                 data_start = event.find("data: ") + 6
                 data = json.loads(event[data_start:].strip())
                 roadmap_id = data.get("roadmap_id")
@@ -228,9 +234,7 @@ class RoadmapStreamService:
                 return None
 
             # Find goal node
-            goal_db = next(
-                (n for n in roadmap.nodes if n.type == NodeType.GOAL), None
-            )
+            goal_db = next((n for n in roadmap.nodes if n.type == NodeType.GOAL), None)
             if not goal_db:
                 return None
 
@@ -243,7 +247,11 @@ class RoadmapStreamService:
             for ms_db in ms_nodes:
                 # Find actions for this milestone
                 action_nodes = sorted(
-                    [n for n in roadmap.nodes if n.parent_id == ms_db.id and n.type == NodeType.ACTION],
+                    [
+                        n
+                        for n in roadmap.nodes
+                        if n.parent_id == ms_db.id and n.type == NodeType.ACTION
+                    ],
                     key=lambda n: n.order,
                 )
                 actions = [
@@ -264,6 +272,9 @@ class RoadmapStreamService:
                         details=ms_db.details,
                         order=ms_db.order,
                         is_assumed=ms_db.is_assumed,
+                        start_date=str(ms_db.start_date) if ms_db.start_date else None,
+                        end_date=str(ms_db.end_date) if ms_db.end_date else None,
+                        completion_criteria=ms_db.completion_criteria,
                         actions=actions,
                     )
                 )
@@ -302,13 +313,14 @@ class RoadmapStreamService:
                 "details": ms.details,
                 "order": i,
                 "is_assumed": False,
+                "start_date": ms.start_date,
+                "end_date": ms.end_date,
+                "completion_criteria": ms.completion_criteria,
             }
             for i, ms in enumerate(modified_milestones)
         ]
         async with self.uow as uow:
-            await uow.roadmaps.update_milestones(
-                UUID(roadmap_id), milestones_data
-            )
+            await uow.roadmaps.update_milestones(UUID(roadmap_id), milestones_data)
 
     async def _persist_actions(
         self,
@@ -324,7 +336,9 @@ class RoadmapStreamService:
                     "label": a.label if hasattr(a, "label") else a.get("label", ""),
                     "details": a.details if hasattr(a, "details") else a.get("details"),
                     "order": a.order if hasattr(a, "order") else a.get("order", 0),
-                    "is_assumed": a.is_assumed if hasattr(a, "is_assumed") else a.get("is_assumed", False),
+                    "is_assumed": a.is_assumed
+                    if hasattr(a, "is_assumed")
+                    else a.get("is_assumed", False),
                 }
                 for a in (ms.actions if hasattr(ms, "actions") else [])
             ]
@@ -337,7 +351,9 @@ class RoadmapStreamService:
                 "label": a.label if hasattr(a, "label") else a.get("label", ""),
                 "details": a.details if hasattr(a, "details") else a.get("details"),
                 "order": a.order if hasattr(a, "order") else a.get("order", 0),
-                "is_assumed": a.is_assumed if hasattr(a, "is_assumed") else a.get("is_assumed", False),
+                "is_assumed": a.is_assumed
+                if hasattr(a, "is_assumed")
+                else a.get("is_assumed", False),
             }
             for a in (goal_node.actions if hasattr(goal_node, "actions") else [])
         ]

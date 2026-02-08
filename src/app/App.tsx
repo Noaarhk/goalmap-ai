@@ -31,7 +31,7 @@ function App() {
 		return <AuthContainer />;
 	}
 
-	const handleApprove = async (modifiedMilestones?: { id: string; label: string; is_new?: boolean }[]) => {
+	const handleApprove = async (modifiedMilestones?: { id: string; label: string; start_date?: string; end_date?: string; completion_criteria?: string; is_new?: boolean }[]) => {
 		await approveAndContinue(modifiedMilestones);
 	};
 
