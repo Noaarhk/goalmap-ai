@@ -1,18 +1,17 @@
 """
-Discovery Streaming Service - Response First, Background Analysis
+Discovery Streaming Service V4 - Analyze First, Then Respond
 
-Features:
-- Immediate token streaming (no blocking analysis)
-- Background analysis runs AFTER user sees full response
-- Blueprint update is non-blocking
-- Uncertainty detection and tracking
+Flow:
+1. Pre-analyze user message -> update blueprint (knows what's missing)
+2. Stream response using UPDATED blueprint (AI asks the right questions)
+3. Emit blueprint_update event
 """
 
 import logging
 import uuid
 from typing import AsyncGenerator
 
-from app.agents.discovery.pipeline import stream_response, analyze_response_background
+from app.agents.discovery.pipeline import analyze_user_message, stream_response
 from app.core.uow import AsyncUnitOfWork
 from app.schemas.api.chat import BlueprintData, ChatRequest
 from app.schemas.events.base import ErrorEventData, StatusEventData, TokenEventData
@@ -35,12 +34,12 @@ class DiscoveryStreamService:
         user_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """
-        Stream chat response first, then analyze in background.
+        Analyze first, then stream response with updated context.
 
         Flow:
-        1. Immediately start streaming response tokens
-        2. After streaming complete, run background analysis
-        3. Emit blueprint_update event when analysis is done
+        1. Pre-analyze user message -> update blueprint
+        2. Stream response with UPDATED blueprint (AI knows what to ask)
+        3. Emit blueprint_update event
         """
         # 1. Prepare messages
         messages = []
@@ -76,17 +75,36 @@ class DiscoveryStreamService:
             if user_id and request.chat_id:
                 await self._persist_user_message(request.chat_id, request.message)
 
-            # --- Step 1: Stream response immediately ---
+            # --- Step 1: Pre-analyze user message ---
+            yield self._status_event("analyzing")
+
+            history_for_analysis = messages[:-1]  # Exclude the current message (passed separately)
+            updated_blueprint = await analyze_user_message(
+                user_message=request.message,
+                history=history_for_analysis,
+                blueprint=blueprint,
+                callbacks=callbacks,
+            )
+
+            # Emit blueprint update immediately so frontend can show progress
+            yield self._blueprint_event(updated_blueprint)
+
+            # --- Step 2: Stream response with UPDATED blueprint ---
             yield self._status_event("generating")
+
+            # Determine missing fields from scores
+            missing_fields = _get_missing_fields(updated_blueprint)
 
             full_response = ""
             run_id = str(uuid.uuid4())
 
-            async for token in stream_response(messages, blueprint, callbacks):
+            async for token in stream_response(
+                messages, updated_blueprint, missing_fields, callbacks
+            ):
                 full_response += token
                 yield self._token_event(token, run_id)
 
-            # Persist assistant message immediately after streaming
+            # Persist assistant message
             if user_id and request.chat_id and full_response:
                 async with self.uow as uow:
                     await uow.conversations.append_message(
@@ -94,19 +112,6 @@ class DiscoveryStreamService:
                         role="assistant",
                         content=full_response,
                     )
-
-            # --- Step 2: Background analysis ---
-            yield self._status_event("analyzing")
-
-            updated_blueprint = await analyze_response_background(
-                user_message=request.message,
-                assistant_response=full_response,
-                blueprint=blueprint,
-                callbacks=callbacks,
-            )
-
-            # Emit blueprint update
-            yield self._blueprint_event(updated_blueprint)
 
             # Persist blueprint
             if user_id and request.chat_id:
@@ -159,3 +164,20 @@ class DiscoveryStreamService:
         bp_dict = blueprint.model_dump(exclude_none=True)
         data = BlueprintUpdateEventData(**bp_dict)
         return f"event: blueprint_update\ndata: {data.model_dump_json()}\n\n"
+
+
+def _get_missing_fields(blueprint: BlueprintData) -> list[str]:
+    """Identify fields that still need user input based on scores."""
+    threshold = 60
+    missing = []
+    score_map = {
+        "goal": blueprint.field_scores.goal,
+        "why": blueprint.field_scores.why,
+        "timeline": blueprint.field_scores.timeline,
+        "obstacles": blueprint.field_scores.obstacles,
+        "resources": blueprint.field_scores.resources,
+    }
+    for field, score in score_map.items():
+        if score < threshold:
+            missing.append(field)
+    return missing
