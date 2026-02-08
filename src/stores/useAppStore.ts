@@ -22,7 +22,17 @@ export const useAppStore = create<AppStore>()(
         }),
         {
             name: "app-storage",
-            partialize: (state) => ({ appState: state.appState }), // Only persist appState
+            partialize: (state) => ({ appState: state.appState }),
+            merge: (_persisted, current) => {
+                const persisted = _persisted as Partial<AppStore> | null;
+                const restoredState = persisted?.appState;
+                // TRANSITION is a transient streaming state — can't survive a refresh
+                const safeState =
+                    restoredState === AppState.TRANSITION
+                        ? AppState.DISCOVERY
+                        : restoredState ?? current.appState;
+                return { ...current, appState: safeState };
+            },
         }
     )
 );
