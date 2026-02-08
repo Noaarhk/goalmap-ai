@@ -50,6 +50,15 @@ async def generate_skeleton(context: dict[str, Any]) -> GoalNode | None:
         milestones_data = goal_data.pop("milestones", [])
         actions_data = goal_data.pop("actions", [])
 
+        # Debug: check if LLM returned schedule fields
+        for ms in milestones_data:
+            logger.info(
+                f"[Skeleton] Milestone '{ms.get('label', '?')}': "
+                f"start_date={ms.get('start_date')}, "
+                f"end_date={ms.get('end_date')}, "
+                f"completion_criteria={ms.get('completion_criteria')}"
+            )
+
         goal_content = GoalContent(
             label=goal_data.get("label", goal_text),
             details=goal_data.get("details"),

@@ -13,7 +13,10 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.agents.discovery.prompts import _ANALYSIS_SYSTEM_PROMPT, _CHAT_SYSTEM_PROMPT
+from app.agents.discovery.prompts import (
+    _CHAT_SYSTEM_PROMPT,
+    _PRE_ANALYSIS_SYSTEM_PROMPT,
+)
 from app.agents.roadmap.prompts import (
     _ACTION_GENERATOR_SYSTEM,
     _STRATEGIC_PLANNER_SYSTEM,
@@ -36,7 +39,7 @@ PROMPTS = {
     },
     "discovery-analysis": {
         "messages": [
-            {"role": "system", "content": _ANALYSIS_SYSTEM_PROMPT},
+            {"role": "system", "content": _PRE_ANALYSIS_SYSTEM_PROMPT},
             {"role": "user", "content": "Analyze and return JSON only."},
         ],
         "config": {"temperature": 0, "response_format": {"type": "json_object"}},

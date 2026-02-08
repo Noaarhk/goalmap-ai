@@ -37,9 +37,10 @@ interface ModifiedMilestone {
 
 interface TransitionViewProps {
 	onApprove?: (modifiedMilestones?: ModifiedMilestone[]) => void;
+	onCancel?: () => void;
 }
 
-const TransitionView: React.FC<TransitionViewProps> = ({ onApprove }) => {
+const TransitionView: React.FC<TransitionViewProps> = ({ onApprove, onCancel }) => {
 	const {
 		streamingGoal,
 		streamingStatus,
@@ -480,22 +481,32 @@ const TransitionView: React.FC<TransitionViewProps> = ({ onApprove }) => {
 
 			{/* Structure Review Buttons */}
 			{isAwaitingApproval && reviewPhase === "structure" && !isEditing && (
-				<div className="mt-8 flex gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+				<div className="mt-8 flex flex-col items-center gap-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
+					<div className="flex gap-4">
+						<button
+							type="button"
+							onClick={handleApproveStructure}
+							className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl font-bold text-sm uppercase tracking-wider shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-105 transition-all active:scale-95"
+						>
+							<Rocket className="w-5 h-5" />
+							Approve & Set Schedule
+						</button>
+						<button
+							type="button"
+							onClick={handleStartEdit}
+							className="flex items-center gap-2 px-6 py-4 bg-slate-800 border border-slate-700 text-slate-300 rounded-xl font-medium text-sm hover:bg-slate-700 hover:text-white transition-all"
+						>
+							<Edit3 className="w-4 h-4" />
+							Edit
+						</button>
+					</div>
 					<button
 						type="button"
-						onClick={handleApproveStructure}
-						className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl font-bold text-sm uppercase tracking-wider shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-105 transition-all active:scale-95"
+						onClick={onCancel}
+						className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors mt-1"
 					>
-						<Rocket className="w-5 h-5" />
-						Approve & Set Schedule
-					</button>
-					<button
-						type="button"
-						onClick={handleStartEdit}
-						className="flex items-center gap-2 px-6 py-4 bg-slate-800 border border-slate-700 text-slate-300 rounded-xl font-medium text-sm hover:bg-slate-700 hover:text-white transition-all"
-					>
-						<Edit3 className="w-4 h-4" />
-						Edit
+						<ArrowLeft className="w-3 h-3" />
+						Back to Discovery
 					</button>
 				</div>
 			)}

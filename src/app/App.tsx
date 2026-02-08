@@ -36,10 +36,16 @@ function App() {
 		await approveAndContinue(modifiedMilestones);
 	};
 
+	const handleCancelGeneration = () => {
+		useRoadmapStore.getState().resetStreaming();
+		useRoadmapStore.getState().clearAwaitingApproval();
+		useAppStore.getState().setAppState(AppState.DISCOVERY);
+	};
+
 	return (
 		<div className="flex h-screen w-screen bg-[#101722] overflow-hidden text-slate-100">
 			{appState === AppState.TRANSITION && (
-				<TransitionView onApprove={handleApprove} />
+				<TransitionView onApprove={handleApprove} onCancel={handleCancelGeneration} />
 			)}
 
 			{appState === AppState.DISCOVERY && <DiscoveryContainer />}

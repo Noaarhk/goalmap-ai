@@ -80,5 +80,7 @@ def preload_prompts(prompt_names: list[str]) -> None:
 def get_prompt(name: str, fallback: ChatPromptTemplate) -> ChatPromptTemplate:
     """Return cached prompt or fallback. No network calls after startup."""
     if name in _prompt_cache:
+        logger.debug(f"Using Langfuse prompt for '{name}'")
         return _prompt_cache[name]
+    logger.debug(f"Using local fallback prompt for '{name}'")
     return fallback
