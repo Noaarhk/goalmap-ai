@@ -1,7 +1,9 @@
 import {
+	ArrowLeft,
 	Calendar,
 	Check,
 	CheckCircle,
+	ClipboardCheck,
 	Edit3,
 	GripVertical,
 	Loader2,
@@ -22,8 +24,19 @@ const steps = [
 	{ id: 4, label: "Ready" },
 ];
 
+type ReviewPhase = "structure" | "schedule";
+
+interface ModifiedMilestone {
+	id: string;
+	label: string;
+	start_date?: string;
+	end_date?: string;
+	completion_criteria?: string;
+	is_new?: boolean;
+}
+
 interface TransitionViewProps {
-	onApprove?: (modifiedMilestones?: { id: string; label: string; start_date?: string; end_date?: string; completion_criteria?: string; is_new?: boolean }[]) => void;
+	onApprove?: (modifiedMilestones?: ModifiedMilestone[]) => void;
 }
 
 const TransitionView: React.FC<TransitionViewProps> = ({ onApprove }) => {
@@ -35,11 +48,22 @@ const TransitionView: React.FC<TransitionViewProps> = ({ onApprove }) => {
 		streamingActions,
 		isAwaitingApproval,
 		setStreamingMilestones,
+		setStreamingStep,
+		setStreamingStatus,
 	} = useRoadmapStore();
 
+	// Phase tracking for 2-step approval
+	const [reviewPhase, setReviewPhase] = useState<ReviewPhase>("structure");
 	const [isEditing, setIsEditing] = useState(false);
+
+	// Structure editing state (labels + add/remove)
 	const [editedMilestones, setEditedMilestones] = useState<
-		{ id: string; label: string; status: "pending" | "generating" | "done"; startDate?: string; endDate?: string; completionCriteria?: string }[]
+		{ id: string; label: string; status: "pending" | "generating" | "done" }[]
+	>([]);
+
+	// Schedule editing state (dates + criteria, pre-filled from LLM)
+	const [scheduledMilestones, setScheduledMilestones] = useState<
+		{ id: string; label: string; startDate: string; endDate: string; completionCriteria: string; isNew: boolean }[]
 	>([]);
 
 	const getActionsForMilestone = (milestoneId: string) =>
@@ -47,67 +71,117 @@ const TransitionView: React.FC<TransitionViewProps> = ({ onApprove }) => {
 
 	const hasStreamingData = streamingGoal || streamingMilestones.length > 0;
 
-	// Start editing mode
+	// --- Structure Phase Handlers ---
+
 	const handleStartEdit = () => {
-		setEditedMilestones([...streamingMilestones]);
+		setEditedMilestones(
+			streamingMilestones.map((m) => ({ id: m.id, label: m.label, status: m.status })),
+		);
 		setIsEditing(true);
 	};
 
-	// Cancel editing
 	const handleCancelEdit = () => {
 		setIsEditing(false);
 		setEditedMilestones([]);
 	};
 
-	// Save edits and approve
-	const handleSaveAndApprove = () => {
-		// Update the store with edited milestones
-		setStreamingMilestones(editedMilestones);
+	const handleSaveStructure = () => {
+		// Apply label edits to streaming milestones (preserve dates/criteria from LLM)
+		const updatedMilestones = editedMilestones.map((edited) => {
+			const original = streamingMilestones.find((m) => m.id === edited.id);
+			return {
+				...edited,
+				startDate: original?.startDate,
+				endDate: original?.endDate,
+				completionCriteria: original?.completionCriteria,
+			};
+		});
+		setStreamingMilestones(updatedMilestones);
 		setIsEditing(false);
-		
-		// Convert to API format and send to backend
-		const modifiedForApi = editedMilestones.map((m) => ({
-		id: m.id,
-		label: m.label,
-		start_date: m.startDate,
-		end_date: m.endDate,
-		completion_criteria: m.completionCriteria,
-		is_new: m.id.startsWith("new-"),
-	}));
-		
-		onApprove?.(modifiedForApi);
+		setEditedMilestones([]);
 	};
 
-	// Update milestone label
 	const handleMilestoneChange = (id: string, newLabel: string) => {
 		setEditedMilestones((prev) =>
 			prev.map((m) => (m.id === id ? { ...m, label: newLabel } : m)),
 		);
 	};
 
-	// Update milestone field
-	const handleFieldChange = (id: string, field: string, value: string) => {
-		setEditedMilestones((prev) =>
-			prev.map((m) => (m.id === id ? { ...m, [field]: value || undefined } : m)),
-		);
-	};
-
-	// Remove milestone
 	const handleRemoveMilestone = (id: string) => {
 		setEditedMilestones((prev) => prev.filter((m) => m.id !== id));
 	};
 
-	// Add new milestone
 	const handleAddMilestone = () => {
-		const newMilestone = {
-			id: `new-${Date.now()}`,
-			label: "New Milestone",
-			status: "done" as const,
-		};
-		setEditedMilestones((prev) => [...prev, newMilestone]);
+		setEditedMilestones((prev) => [
+			...prev,
+			{ id: `new-${Date.now()}`, label: "New Milestone", status: "done" as const },
+		]);
 	};
 
+	// --- Phase Transition: Structure → Schedule ---
+
+	const handleApproveStructure = () => {
+		setScheduledMilestones(
+			streamingMilestones.map((m) => ({
+				id: m.id,
+				label: m.label,
+				startDate: m.startDate ?? "",
+				endDate: m.endDate ?? "",
+				completionCriteria: m.completionCriteria ?? "",
+				isNew: m.id.startsWith("new-"),
+			})),
+		);
+		setReviewPhase("schedule");
+		setStreamingStep(3);
+		setStreamingStatus("Set timeline and completion criteria");
+	};
+
+	// --- Schedule Phase Handlers ---
+
+	const handleScheduleFieldChange = (id: string, field: string, value: string) => {
+		setScheduledMilestones((prev) =>
+			prev.map((m) => (m.id === id ? { ...m, [field]: value } : m)),
+		);
+	};
+
+	const handleBackToStructure = () => {
+		setReviewPhase("structure");
+		setStreamingStep(2);
+		setStreamingStatus("Review your roadmap structure");
+	};
+
+	const handleConfirmSchedule = () => {
+		const modifiedForApi: ModifiedMilestone[] = scheduledMilestones.map((m) => ({
+			id: m.id,
+			label: m.label,
+			start_date: m.startDate || undefined,
+			end_date: m.endDate || undefined,
+			completion_criteria: m.completionCriteria || undefined,
+			is_new: m.isNew,
+		}));
+		onApprove?.(modifiedForApi);
+	};
+
+	// --- Determine display state ---
+
 	const displayMilestones = isEditing ? editedMilestones : streamingMilestones;
+
+	const heading = (() => {
+		if (isEditing) return "Edit Milestones";
+		if (isAwaitingApproval && reviewPhase === "schedule") return "Set Timeline & Criteria";
+		if (isAwaitingApproval) return "Review Your Roadmap";
+		return "Constructing Your Roadmap";
+	})();
+
+	const subtitle = (() => {
+		if (isEditing) return "Rename, reorder, add or remove milestones";
+		if (isAwaitingApproval && reviewPhase === "schedule")
+			return "Set dates and define what 'done' looks like for each milestone";
+		return (
+			streamingStatus ||
+			(hasStreamingData ? "Building your path to success..." : "Analyzing your goals...")
+		);
+	})();
 
 	return (
 		<div className="fixed inset-0 z-50 bg-slate-900 flex flex-col items-center justify-center text-white overflow-y-auto py-8">
@@ -117,13 +191,7 @@ const TransitionView: React.FC<TransitionViewProps> = ({ onApprove }) => {
 			</div>
 
 			<div className="text-center mb-8 w-full max-w-lg px-6">
-				<h2 className="text-2xl font-bold mb-6">
-					{isEditing
-						? "Edit Your Roadmap"
-						: isAwaitingApproval
-							? "Review Your Roadmap"
-							: "Constructing Your Roadmap"}
-				</h2>
+				<h2 className="text-2xl font-bold mb-6">{heading}</h2>
 
 				{/* Progress Stepper */}
 				<div className="flex items-center justify-between relative mb-8">
@@ -138,7 +206,10 @@ const TransitionView: React.FC<TransitionViewProps> = ({ onApprove }) => {
 					{steps.map((step) => {
 						const isCompleted = streamingStep > step.id;
 						const isActive = streamingStep >= step.id;
-						const isPaused = (isAwaitingApproval || isEditing) && step.id === 2;
+						const isPaused =
+							(isAwaitingApproval || isEditing) &&
+							((reviewPhase === "structure" && step.id === 2) ||
+								(reviewPhase === "schedule" && step.id === 3));
 
 						return (
 							<div key={step.id} className="flex flex-col items-center gap-2">
@@ -173,17 +244,13 @@ const TransitionView: React.FC<TransitionViewProps> = ({ onApprove }) => {
 					})}
 				</div>
 
-				<p className="text-slate-400 text-sm h-6">
-					{isEditing
-						? "Drag to reorder, click to edit, or add new milestones"
-						: streamingStatus ||
-							(hasStreamingData
-								? "Building your path to success..."
-								: "Analyzing your goals...")}
-				</p>
+				<p className="text-slate-400 text-sm h-6">{subtitle}</p>
 			</div>
 
-			{hasStreamingData && (
+			{/* ============================================ */}
+			{/* PHASE: Structure Review / Edit (Step 2)      */}
+			{/* ============================================ */}
+			{hasStreamingData && reviewPhase === "structure" && (
 				<div className="w-full max-w-lg px-6">
 					{streamingGoal && (
 						<div className="mb-6 p-4 bg-slate-800/50 rounded-xl border border-amber-500/30">
@@ -214,97 +281,55 @@ const TransitionView: React.FC<TransitionViewProps> = ({ onApprove }) => {
 								}`}
 							>
 								<div className="flex items-center gap-3">
-								{isEditing ? (
-									<>
-										<GripVertical className="w-5 h-5 text-slate-500 cursor-grab flex-shrink-0" />
-										<div className="flex-1 space-y-2">
-											<p className="text-xs text-slate-400">
-												Milestone {idx + 1}
-											</p>
-											<input
-												type="text"
-												value={milestone.label}
-												onChange={(e) =>
-													handleMilestoneChange(milestone.id, e.target.value)
-												}
-												className="w-full bg-slate-900/50 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500"
-											/>
-											<div className="flex items-center gap-2">
-												<Calendar className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
-												<input
-													type="date"
-													value={milestone.startDate ?? ""}
-													onChange={(e) =>
-														handleFieldChange(milestone.id, "startDate", e.target.value)
-													}
-													className="flex-1 bg-slate-900/50 border border-slate-600 rounded-lg px-2 py-1 text-white text-xs focus:outline-none focus:border-amber-500"
-												/>
-												<span className="text-xs text-slate-500">→</span>
-												<input
-													type="date"
-													value={milestone.endDate ?? ""}
-													onChange={(e) =>
-														handleFieldChange(milestone.id, "endDate", e.target.value)
-													}
-													className="flex-1 bg-slate-900/50 border border-slate-600 rounded-lg px-2 py-1 text-white text-xs focus:outline-none focus:border-amber-500"
-												/>
-											</div>
-											<input
-												type="text"
-												value={milestone.completionCriteria ?? ""}
-												onChange={(e) =>
-													handleFieldChange(milestone.id, "completionCriteria", e.target.value)
-												}
-												placeholder="Completion criteria..."
-												className="w-full bg-slate-900/50 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-amber-500 placeholder:text-slate-600"
-											/>
-										</div>
-										<button
-											type="button"
-											onClick={() => handleRemoveMilestone(milestone.id)}
-											className="p-2 hover:bg-red-900/30 rounded-lg text-slate-500 hover:text-red-400 transition-colors flex-shrink-0"
-										>
-											<Trash2 className="w-4 h-4" />
-										</button>
-									</>
-								) : (
-									<>
-										{milestone.status === "done" ? (
-											<CheckCircle className="w-5 h-5 text-blue-400 flex-shrink-0" />
-										) : milestone.status === "generating" ? (
-											<Loader2 className="w-5 h-5 text-blue-400 animate-spin flex-shrink-0" />
-										) : (
-											<div className="w-5 h-5 rounded-full border-2 border-slate-600 flex-shrink-0" />
-										)}
-										<div className="flex-1">
-											<div className="flex items-center justify-between">
+									{isEditing ? (
+										<>
+											<GripVertical className="w-5 h-5 text-slate-500 cursor-grab flex-shrink-0" />
+											<div className="flex-1 space-y-2">
 												<p className="text-xs text-slate-400">
 													Milestone {idx + 1}
 												</p>
-												{(milestone.startDate || milestone.endDate) && (
-													<span className="flex items-center gap-1 text-[10px] text-slate-500">
-														<Calendar className="w-3 h-3" />
-														{milestone.startDate || "?"} → {milestone.endDate || "?"}
-													</span>
-												)}
+												<input
+													type="text"
+													value={milestone.label}
+													onChange={(e) =>
+														handleMilestoneChange(milestone.id, e.target.value)
+													}
+													className="w-full bg-slate-900/50 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500"
+												/>
 											</div>
-											<p
-												className={`font-medium ${
-													milestone.status === "pending"
-														? "text-slate-500"
-														: "text-white"
-												}`}
+											<button
+												type="button"
+												onClick={() => handleRemoveMilestone(milestone.id)}
+												className="p-2 hover:bg-red-900/30 rounded-lg text-slate-500 hover:text-red-400 transition-colors flex-shrink-0"
 											>
-												{milestone.label}
-											</p>
-											{milestone.completionCriteria && (
-												<p className="text-[10px] text-slate-500 mt-0.5">
-													✓ {milestone.completionCriteria}
-												</p>
+												<Trash2 className="w-4 h-4" />
+											</button>
+										</>
+									) : (
+										<>
+											{milestone.status === "done" ? (
+												<CheckCircle className="w-5 h-5 text-blue-400 flex-shrink-0" />
+											) : milestone.status === "generating" ? (
+												<Loader2 className="w-5 h-5 text-blue-400 animate-spin flex-shrink-0" />
+											) : (
+												<div className="w-5 h-5 rounded-full border-2 border-slate-600 flex-shrink-0" />
 											)}
-										</div>
-									</>
-								)}
+											<div className="flex-1">
+												<p className="text-xs text-slate-400">
+													Milestone {idx + 1}
+												</p>
+												<p
+													className={`font-medium ${
+														milestone.status === "pending"
+															? "text-slate-500"
+															: "text-white"
+													}`}
+												>
+													{milestone.label}
+												</p>
+											</div>
+										</>
+									)}
 								</div>
 
 								{!isEditing &&
@@ -324,7 +349,6 @@ const TransitionView: React.FC<TransitionViewProps> = ({ onApprove }) => {
 							</div>
 						))}
 
-						{/* Add Milestone Button (Edit Mode) */}
 						{isEditing && (
 							<button
 								type="button"
@@ -339,16 +363,131 @@ const TransitionView: React.FC<TransitionViewProps> = ({ onApprove }) => {
 				</div>
 			)}
 
-			{/* Action Buttons */}
-			{isAwaitingApproval && !isEditing && (
+			{/* ============================================ */}
+			{/* PHASE: Schedule & Criteria Review (Step 3)   */}
+			{/* ============================================ */}
+			{hasStreamingData && reviewPhase === "schedule" && isAwaitingApproval && (
+				<div className="w-full max-w-lg px-6">
+					<div className="space-y-4">
+						{scheduledMilestones.map((milestone, idx) => (
+							<div
+								key={milestone.id}
+								className="p-4 rounded-lg border border-blue-500/20 bg-slate-800/50 space-y-3"
+							>
+								<div className="flex items-center gap-2">
+									<span className="text-xs font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">
+										{idx + 1}
+									</span>
+									<p className="text-sm font-semibold text-white">
+										{milestone.label}
+									</p>
+								</div>
+
+								{/* Date range */}
+								<div className="flex items-center gap-2">
+									<Calendar className="w-4 h-4 text-slate-500 flex-shrink-0" />
+									<input
+										type="date"
+										value={milestone.startDate}
+										onChange={(e) =>
+											handleScheduleFieldChange(milestone.id, "startDate", e.target.value)
+										}
+										className="flex-1 bg-slate-900/50 border border-slate-600 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-blue-500"
+									/>
+									<span className="text-xs text-slate-500 font-medium">→</span>
+									<input
+										type="date"
+										value={milestone.endDate}
+										onChange={(e) =>
+											handleScheduleFieldChange(milestone.id, "endDate", e.target.value)
+										}
+										className="flex-1 bg-slate-900/50 border border-slate-600 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-blue-500"
+									/>
+								</div>
+
+								{/* Completion criteria */}
+								<div className="flex items-start gap-2">
+									<ClipboardCheck className="w-4 h-4 text-slate-500 flex-shrink-0 mt-1.5" />
+									<input
+										type="text"
+										value={milestone.completionCriteria}
+										onChange={(e) =>
+											handleScheduleFieldChange(milestone.id, "completionCriteria", e.target.value)
+										}
+										placeholder="How do you know this milestone is done?"
+										className="flex-1 bg-slate-900/50 border border-slate-600 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-blue-500 placeholder:text-slate-600"
+									/>
+								</div>
+							</div>
+						))}
+					</div>
+				</div>
+			)}
+
+			{/* ============================================ */}
+			{/* ACTION STREAMING PHASE (step 3 running)      */}
+			{/* ============================================ */}
+			{hasStreamingData && reviewPhase === "schedule" && !isAwaitingApproval && (
+				<div className="w-full max-w-lg px-6">
+					<div className="space-y-3">
+						{streamingMilestones.map((milestone, idx) => (
+							<div
+								key={milestone.id}
+								className={`p-3 rounded-lg border transition-all ${
+									milestone.status === "done"
+										? "bg-slate-800/50 border-blue-500/30"
+										: milestone.status === "generating"
+											? "bg-slate-800/70 border-blue-400/50 animate-pulse"
+											: "bg-slate-800/30 border-slate-700/30"
+								}`}
+							>
+								<div className="flex items-center gap-3">
+									{milestone.status === "done" ? (
+										<CheckCircle className="w-5 h-5 text-blue-400 flex-shrink-0" />
+									) : milestone.status === "generating" ? (
+										<Loader2 className="w-5 h-5 text-blue-400 animate-spin flex-shrink-0" />
+									) : (
+										<div className="w-5 h-5 rounded-full border-2 border-slate-600 flex-shrink-0" />
+									)}
+									<div className="flex-1">
+										<p className="text-xs text-slate-400">Milestone {idx + 1}</p>
+										<p className="font-medium text-white">{milestone.label}</p>
+									</div>
+								</div>
+
+								{getActionsForMilestone(milestone.id).length > 0 && (
+									<div className="mt-2 ml-8 space-y-1">
+										{getActionsForMilestone(milestone.id).map((action) => (
+											<div
+												key={action.id}
+												className="flex items-center gap-2 text-sm text-emerald-400/80"
+											>
+												<span>→</span>
+												<span>{action.label}</span>
+											</div>
+										))}
+									</div>
+								)}
+							</div>
+						))}
+					</div>
+				</div>
+			)}
+
+			{/* ============================================ */}
+			{/* BUTTONS                                      */}
+			{/* ============================================ */}
+
+			{/* Structure Review Buttons */}
+			{isAwaitingApproval && reviewPhase === "structure" && !isEditing && (
 				<div className="mt-8 flex gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
 					<button
 						type="button"
-						onClick={() => onApprove?.()}
+						onClick={handleApproveStructure}
 						className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl font-bold text-sm uppercase tracking-wider shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-105 transition-all active:scale-95"
 					>
 						<Rocket className="w-5 h-5" />
-						Approve & Continue
+						Approve & Set Schedule
 					</button>
 					<button
 						type="button"
@@ -361,17 +500,17 @@ const TransitionView: React.FC<TransitionViewProps> = ({ onApprove }) => {
 				</div>
 			)}
 
-			{/* Edit Mode Buttons */}
+			{/* Structure Edit Buttons */}
 			{isEditing && (
 				<div className="mt-8 flex gap-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
 					<button
 						type="button"
-						onClick={handleSaveAndApprove}
+						onClick={handleSaveStructure}
 						disabled={editedMilestones.length === 0}
 						className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-amber-600 to-amber-500 text-white rounded-xl font-bold text-sm uppercase tracking-wider shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 hover:scale-105 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
 					>
 						<Check className="w-5 h-5" />
-						Save & Continue
+						Save
 					</button>
 					<button
 						type="button"
@@ -384,7 +523,29 @@ const TransitionView: React.FC<TransitionViewProps> = ({ onApprove }) => {
 				</div>
 			)}
 
-			{/* Loading dots - Show when not awaiting approval and not editing */}
+			{/* Schedule Review Buttons */}
+			{isAwaitingApproval && reviewPhase === "schedule" && (
+				<div className="mt-8 flex gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+					<button
+						type="button"
+						onClick={handleConfirmSchedule}
+						className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-xl font-bold text-sm uppercase tracking-wider shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:scale-105 transition-all active:scale-95"
+					>
+						<Rocket className="w-5 h-5" />
+						Confirm & Generate
+					</button>
+					<button
+						type="button"
+						onClick={handleBackToStructure}
+						className="flex items-center gap-2 px-6 py-4 bg-slate-800 border border-slate-700 text-slate-300 rounded-xl font-medium text-sm hover:bg-slate-700 hover:text-white transition-all"
+					>
+						<ArrowLeft className="w-4 h-4" />
+						Back
+					</button>
+				</div>
+			)}
+
+			{/* Loading dots */}
 			{!isAwaitingApproval && !isEditing && (
 				<div className="mt-8 flex gap-1">
 					{[1, 2, 3, 4, 5].map((i) => (

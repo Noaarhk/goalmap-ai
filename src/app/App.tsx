@@ -32,6 +32,7 @@ function App() {
 	}
 
 	const handleApprove = async (modifiedMilestones?: { id: string; label: string; start_date?: string; end_date?: string; completion_criteria?: string; is_new?: boolean }[]) => {
+		// Called from TransitionView's schedule phase — triggers action generation
 		await approveAndContinue(modifiedMilestones);
 	};
 
