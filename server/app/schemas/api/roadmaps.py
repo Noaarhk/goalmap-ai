@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from app.models.node import NodeStatus
@@ -31,8 +31,8 @@ class NodeResponse(BaseModel):
     status: NodeStatus
     progress: int = 0
     completion_criteria: str | None = None
-    start_date: datetime | None = None
-    end_date: datetime | None = None
+    start_date: date | None = None
+    end_date: date | None = None
     duration_days: int | None = None
     created_at: datetime
     updated_at: datetime
@@ -65,8 +65,8 @@ class ModifiedMilestone(BaseModel):
     id: str
     label: str
     details: str | None = None
-    start_date: str | None = None
-    end_date: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
     completion_criteria: str | None = None
     is_new: bool = False  # True if user added this milestone
 

@@ -1,3 +1,5 @@
+from datetime import date
+
 from pydantic import BaseModel, Field
 
 
@@ -15,8 +17,8 @@ class MilestoneContent(BaseModel):
     label: str
     details: str | None = None
     is_assumed: bool = False
-    start_date: str | None = None  # YYYY-MM-DD
-    end_date: str | None = None  # YYYY-MM-DD
+    start_date: date | None = None
+    end_date: date | None = None
     completion_criteria: str | None = None
     actions: list[ActionContent] = Field(default_factory=list)
 

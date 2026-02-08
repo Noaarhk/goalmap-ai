@@ -272,8 +272,8 @@ class RoadmapStreamService:
                         details=ms_db.details,
                         order=ms_db.order,
                         is_assumed=ms_db.is_assumed,
-                        start_date=str(ms_db.start_date) if ms_db.start_date else None,
-                        end_date=str(ms_db.end_date) if ms_db.end_date else None,
+                        start_date=ms_db.start_date,
+                        end_date=ms_db.end_date,
                         completion_criteria=ms_db.completion_criteria,
                         actions=actions,
                     )

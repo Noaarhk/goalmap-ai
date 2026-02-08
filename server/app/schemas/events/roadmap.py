@@ -1,3 +1,5 @@
+from datetime import date
+
 from app.models.node import NodeStatus
 from pydantic import BaseModel, Field
 
@@ -16,8 +18,8 @@ class BaseNode(BaseModel):
     is_assumed: bool = False
     # Enhanced fields
     progress: int = 0  # 0-100
-    start_date: str | None = None  # YYYY-MM-DD
-    end_date: str | None = None  # YYYY-MM-DD
+    start_date: date | None = None
+    end_date: date | None = None
     completion_criteria: str | None = None
     parent_id: str | None = None
 
