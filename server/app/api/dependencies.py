@@ -123,6 +123,12 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication token",
         )
+    except Exception as e:
+        logger.error(f"Unexpected auth error (likely JWKS fetch failure): {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service temporarily unavailable",
+        )
 
 
 async def get_optional_user(

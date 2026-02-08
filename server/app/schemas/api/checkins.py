@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class NodeUpdate(BaseModel):
@@ -42,6 +42,8 @@ class CheckInConfirmResponse(BaseModel):
 
 class CheckInResponse(BaseModel):
     """Full check-in record."""
+
+    model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     roadmap_id: UUID

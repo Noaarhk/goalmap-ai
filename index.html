@@ -5,74 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QuestForge AI - Structure Your Destiny</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reactflow@11.11.4/dist/style.css" />
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #101722;
-            color: #f8fafc;
-        }
-        .bg-grid-pattern {
-            background-image: linear-gradient(to right, #223149 1px, transparent 1px),
-            linear-gradient(to bottom, #223149 1px, transparent 1px);
-            background-size: 40px 40px;
-        }
-        /* Custom styles for React Flow */
-        .react-flow__node {
-            padding: 0;
-            background: transparent;
-            border: none;
-        }
-        .react-flow__handle {
-            width: 6px;
-            height: 6px;
-            background: #3d84f5;
-            border: 1px solid white;
-        }
-        .react-flow__edge-path {
-            stroke: #3d84f5;
-            stroke-width: 2;
-            filter: drop-shadow(0 0 2px rgba(61, 132, 245, 0.3));
-        }
-
-        /* Markdown specific styles */
-        .prose { color: #cbd5e1; }
-        .prose strong { color: #3d84f5; font-weight: 700; }
-        .prose p { margin-bottom: 0.75rem; }
-        .prose ul { list-style-type: disc; margin-left: 1.5rem; margin-bottom: 0.75rem; }
-        
-        /* Bar Patterns */
-        .bg-bar-grid {
-            background-image: repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(0,0,0,0.1) 5px, rgba(0,0,0,0.1) 10px);
-        }
-        
-        /* Shimmer animation for loading state */
-        @keyframes shimmer {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(100%); }
-        }
-        .animate-shimmer {
-            animation: shimmer 1.5s infinite;
-        }
-    </style>
-<script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@^19.0.0",
-    "react-dom": "https://esm.sh/react-dom@^19.0.0",
-    "react-dom/client": "https://esm.sh/react-dom@^19.0.0/client",
-    "@google/genai": "https://esm.sh/@google/genai@^1.37.0",
-    "lucide-react": "https://esm.sh/lucide-react@^0.462.0",
-    "reactflow": "https://esm.sh/reactflow@^11.11.4",
-    "react-markdown": "https://esm.sh/react-markdown@^9.0.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/"
-  }
-}
-</script>
-<link rel="stylesheet" href="/index.css">
 </head>
 <body class="overflow-hidden">
     <div id="root"></div>

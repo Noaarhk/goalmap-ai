@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class ConversationCreate(BaseModel):
@@ -15,6 +15,8 @@ class ConversationUpdate(BaseModel):
 
 
 class MessageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     role: str
     content: str
@@ -23,6 +25,8 @@ class MessageResponse(BaseModel):
 
 
 class BlueprintResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     start_point: str | None
     goal: str | None
@@ -40,6 +44,8 @@ class BlueprintResponse(BaseModel):
 
 
 class ConversationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     title: str | None
     messages: list[MessageResponse] = []

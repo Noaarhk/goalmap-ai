@@ -3,7 +3,7 @@ from uuid import UUID
 
 from app.models.node import NodeStatus
 from app.models.roadmap import RoadmapStatus
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class RoadmapCreate(BaseModel):
@@ -19,6 +19,8 @@ class RoadmapUpdate(BaseModel):
 
 
 class NodeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     parent_id: UUID | None
     type: str  # goal, milestone, task
@@ -37,6 +39,8 @@ class NodeResponse(BaseModel):
 
 
 class RoadmapResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     title: str
     goal: str
@@ -61,6 +65,9 @@ class ModifiedMilestone(BaseModel):
     id: str
     label: str
     details: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    completion_criteria: str | None = None
     is_new: bool = False  # True if user added this milestone
 
 

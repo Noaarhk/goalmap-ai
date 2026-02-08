@@ -41,24 +41,15 @@ app = FastAPI(
 
 @app.exception_handler(AppException)
 async def app_exception_handler(request: Request, exc: AppException):
-    if exc.status_code >= 500:
-        logger.exception(
-            "[%s %s] %s(%d): %s",
-            request.method,
-            request.url.path,
-            exc.__class__.__name__,
-            exc.status_code,
-            exc.message,
-        )
-    else:
-        logger.exception(
-            "[%s %s] %s(%d): %s",
-            request.method,
-            request.url.path,
-            exc.__class__.__name__,
-            exc.status_code,
-            exc.message,
-        )
+    log = logger.exception if exc.status_code >= 500 else logger.warning
+    log(
+        "[%s %s] %s(%d): %s",
+        request.method,
+        request.url.path,
+        exc.__class__.__name__,
+        exc.status_code,
+        exc.message,
+    )
 
     return JSONResponse(
         status_code=exc.status_code,
@@ -95,6 +86,29 @@ _cors_origins = (
     if settings.BACKEND_CORS_ORIGINS
     else ["*"] if settings.is_dev else ["https://goalmap-ai.vercel.app"]
 )
+
+
+@app.middleware("http")
+async def catch_all_errors(request: Request, call_next):
+    """
+    Safety net: catches any exception that slips past FastAPI's exception handlers
+    so CORSMiddleware (which wraps this) can still attach CORS headers.
+    Without this, unhandled errors hit Starlette's ServerErrorMiddleware
+    which sits OUTSIDE CORS and returns a bare 500 with no CORS headers.
+    """
+    try:
+        return await call_next(request)
+    except Exception as exc:
+        logger.exception("Middleware caught unhandled error: %s", str(exc))
+        return JSONResponse(
+            status_code=500,
+            content={
+                "message": "Internal server error",
+                "code": "InternalServerError",
+            },
+        )
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
