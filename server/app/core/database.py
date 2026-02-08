@@ -7,7 +7,12 @@ from psycopg_pool import AsyncConnectionPool
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # SQLAlchemy Async Engine
-engine = create_async_engine(settings.ASYNC_DATABASE_URI, echo=False)
+engine = create_async_engine(
+    settings.ASYNC_DATABASE_URI,
+    echo=False,
+    connect_args={"prepared_statement_cache_size": 0},
+    pool_pre_ping=True,
+)
 async_session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
 
